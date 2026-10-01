@@ -1,0 +1,29 @@
+{
+  "project": "ImageQuay",
+  "status": "PASS",
+  "python": "3.12.13",
+  "baseline_commit": "faed829b838dc4060b7e36f90239a52cd37f2a45",
+  "upstream_source_bytes_unchanged": true,
+  "upstream_tests_passed": 30,
+  "upstream_tests_available": true,
+  "derivative_tests_passed": 34,
+  "differential_observations": 822,
+  "differential_mismatches": 0,
+  "wheel_and_sdist_build": "PASS",
+  "independent_wheel_consumer": "PASS",
+  "installed_cli_help": "PASS",
+  "packaged_source_hashes": "verified outside package in group delivery manifest",
+  "ci_remote_run": "OPEN: workflow is provided; local workflow-equivalent checks passed; GitHub run awaits publication",
+  "OPEN": [
+    "real devices and firmware collections",
+    "interactive or external service workflows"
+  ],
+  "commands": [
+    "python -m pytest -q -p no:cacheprovider",
+    "python checks/compare_upstream.py --upstream-root PINNED_UPSTREAM",
+    "python -m build",
+    "python -m venv .consumer",
+    ".consumer/bin/python -m pip install dist/*.whl",
+    ".consumer/bin/python -I checks/consume_installation.py"
+  ]
+}
