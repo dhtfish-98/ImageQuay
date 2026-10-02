@@ -27,5 +27,6 @@
     ".consumer/bin/python -I checks/consume_installation.py"
   ],
   "release_tag": "v1.0.1",
-  "executable_metadata": "PASS: original executable modes restored; shebang is the first line; no original source begins with encoding comment"
+  "executable_metadata": "PASS: original executable modes restored; shebang is the first line; no original source begins with encoding comment",
+  "record_scope": "Historical 1.0.1 delivery; current 1.0.2 validation is in VALIDATION.md and DEFENSIVE_SCOPE.md"
 }

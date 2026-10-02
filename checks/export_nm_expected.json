@@ -1,0 +1,36 @@
+{
+  "testbin1": {
+    "sha256": "3f22ac79e1931f93bfe8fe19ebea7ea168dfa8f37e35c97abc5eb6e1ad1f23a7",
+    "exports": {
+      "_main": 18496,
+      "__mh_execute_header": 0,
+      "_OBJC_METACLASS_$_TestClassOne": 24984,
+      "_OBJC_CLASS_$_TestClassOne": 25024
+    }
+  },
+  "testbin1.fat": {
+    "sha256": "21c25d914d271b1d6e001ae8e34a40e6283bf937ee951d21fa7a8ba094deb988",
+    "exports": {
+      "_main": 2144,
+      "__mh_execute_header": 0,
+      "_OBJC_METACLASS_$_TestClassOne": 8600,
+      "_OBJC_CLASS_$_TestClassOne": 8640
+    }
+  },
+  "testbin1.signed": {
+    "sha256": "4e76746ac87d069d5c9da6aad14caf84b05260864af197b58b4ab65535243473",
+    "exports": {
+      "_main": 2144,
+      "__mh_execute_header": 0,
+      "_OBJC_METACLASS_$_TestClassOne": 8600,
+      "_OBJC_CLASS_$_TestClassOne": 8640
+    }
+  },
+  "testlib1.dylib": {
+    "sha256": "73403b5f12fa5e409d9bef4487786397767a886958165e8d8260bdf8abe2954e",
+    "exports": {
+      "_OBJC_METACLASS_$_TestClassOne": 8504,
+      "_OBJC_CLASS_$_TestClassOne": 8544
+    }
+  }
+}

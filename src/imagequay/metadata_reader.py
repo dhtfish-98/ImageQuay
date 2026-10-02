@@ -24,6 +24,8 @@ from imagequay.signing_reader import quay_CodesignInfo as quay_CodesignInfo
 from imagequay.failure_types import quay_MachOAlignmentError as quay_MachOAlignmentError
 from imagequay.container_io import quay_Segment as quay_Segment, quay_Slice as quay_Slice, quay_MachOImageHeader as quay_MachOImageHeader, quay_PlatformType as quay_PlatformType
 from imagequay_support.diagnostics import quay_log as quay_log
+from imagequay.byte_region import ByteRegion
+from imagequay.failure_types import quay_MalformedMachOException
 from imagequay.formatting import quay_macho_is_malformed as quay_macho_is_malformed, quay_ignore as quay_ignore, quay_bytes_to_hex as quay_bytes_to_hex
 from imagequay.parsed_image import quay_Image as quay_Image, quay_os_version as quay_os_version, quay_LinkedImage as quay_LinkedImage, quay_MisalignedVM as quay_MisalignedVM
 
@@ -102,22 +104,20 @@ class quay_MachOImageLoader:
                     _name_boundary.attributes(quay_image_e82ca28)['lazy_binding_table'] = quay_BindingTable(quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['lazy_bind_off'], _name_boundary.attributes(quay_cmd_ed94d81)['lazy_bind_size'])
                 if quay_load_exports_b2afef4:
                     _name_boundary.attributes(quay_log)['info']('Loading Export Trie')
-                    try:
-                        _name_boundary.attributes(quay_image_e82ca28)['export_trie'] = _name_boundary.attributes(quay_ExportTrie)['from_image'](quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['export_off'], _name_boundary.attributes(quay_cmd_ed94d81)['export_size'])
-                    except Exception as quay_e_407aeb2:
-                        _name_boundary.attributes(quay_log)['error'](f'Error loading export trie: {quay_e_407aeb2}')
-                        import traceback as quay_traceback_237730b
-                        print(quay_traceback_237730b.format_exc())
-                        _name_boundary.attributes(quay_image_e82ca28)['export_trie'] = None
+                    _name_boundary.attributes(quay_image_e82ca28)['export_trie'] = _name_boundary.attributes(quay_ExportTrie)['from_image'](quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['export_off'], _name_boundary.attributes(quay_cmd_ed94d81)['export_size'])
             elif quay_load_command_612ac06 == quay_LOAD_COMMAND.FUNCTION_STARTS:
                 quay_fs_start_2a01215 = _name_boundary.attributes(quay_cmd_ed94d81)['dataoff']
                 quay_fs_size_51f0c60 = _name_boundary.attributes(quay_cmd_ed94d81)['datasize']
-                quay_read_head_12943d5 = quay_fs_start_2a01215
-                quay_fs_addr_f5bd476 = _name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['vm'])['vm_base_addr']
-                while quay_read_head_12943d5 < quay_fs_start_2a01215 + quay_fs_size_51f0c60:
-                    quay_fs_r_addr_401f3ea, quay_read_head_12943d5 = _name_boundary.attributes(quay_image_e82ca28)['read_uleb128'](quay_read_head_12943d5)
-                    quay_fs_addr_f5bd476 += quay_fs_r_addr_401f3ea
-                    _name_boundary.attributes(quay_image_e82ca28)['function_starts'].append(quay_fs_addr_f5bd476)
+                region = ByteRegion(quay_image_e82ca28, quay_fs_start_2a01215, quay_fs_size_51f0c60)
+                cursor = region.start
+                address = quay_image_e82ca28.vm.vm_base_addr
+                while cursor < region.end:
+                    region.use()
+                    delta, cursor = region.leb(cursor)
+                    address += delta
+                    if address >= 1 << 64:
+                        raise quay_MalformedMachOException('function-start address overflows 64 bits')
+                    quay_image_e82ca28.function_starts.append(address)
             elif quay_load_command_612ac06 == quay_LOAD_COMMAND.LC_DYLD_EXPORTS_TRIE:
                 _name_boundary.attributes(quay_log)['info']('Loading Export Trie')
                 _name_boundary.attributes(quay_image_e82ca28)['export_trie'] = _name_boundary.attributes(quay_ExportTrie)['from_image'](quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['dataoff'], _name_boundary.attributes(quay_cmd_ed94d81)['datasize'])
@@ -537,105 +537,120 @@ class quay_ExportNode:
     def __repr__(quay_self_15cd325):
         return f"ExportNode(name={_name_boundary.attributes(quay_self_15cd325)['name']!r}, offset={_name_boundary.attributes(quay_self_15cd325)['offset']}, flags={_name_boundary.attributes(quay_self_15cd325)['flags']}, children={len(_name_boundary.attributes(quay_self_15cd325)['children'])})"
 
-@_name_boundary.class_contract('ExportTrie', {'from_values': 'quay_from_values', 'raw_bytes': 'quay_raw_bytes', 'from_image': 'quay_from_image', '_read_node_tree_iter': 'quay__read_node_tree_iter', 'print_tree': 'quay_print_tree', 'raw': 'quay_raw', 'nodes': 'quay_nodes', 'symbols': 'quay_symbols', 'root': 'quay_root'})
+@_name_boundary.class_contract('ExportTrie', {'from_values':'quay_from_values', 'raw_bytes':'quay_raw_bytes', 'from_image':'quay_from_image', '_read_node_tree_iter':'quay__read_node_tree_iter', 'print_tree':'quay_print_tree', 'raw':'quay_raw', 'nodes':'quay_nodes', 'symbols':'quay_symbols', 'root':'quay_root'})
 class quay_ExportTrie(quay_Constructable):
-
-    @_name_boundary.callable_contract({'self': 'quay_self_fe64a13'}, '__init__')
-    def __init__(quay_self_fe64a13):
-        _name_boundary.attributes(quay_self_fe64a13)['raw'] = bytearray()
-        _name_boundary.attributes(quay_self_fe64a13)['nodes']: quay_List[quay_export_node] = []
-        _name_boundary.attributes(quay_self_fe64a13)['symbols']: quay_List[quay_Symbol] = []
-        _name_boundary.attributes(quay_self_fe64a13)['root']: quay_Optional[quay_ExportNode] = None
+    def __init__(self):
+        self.raw, self.nodes, self.symbols, self.root = bytearray(), [], [], None
 
     @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_776bda1', 'args': 'quay_args_4c7afb3', 'kwargs': 'quay_kwargs_786866b'}, 'from_values')
-    def quay_from_values(quay_cls_776bda1, *quay_args_4c7afb3, **quay_kwargs_786866b):
-        pass
+    def quay_from_values(cls, *args, **kwargs):
+        raise NotImplementedError('export trie construction is not implemented')
 
-    @_name_boundary.callable_contract({'self': 'quay_self_2305fbd'}, 'raw_bytes')
-    def quay_raw_bytes(quay_self_2305fbd):
-        return _name_boundary.attributes(quay_self_2305fbd)['raw']
+    def quay_raw_bytes(self):
+        return self.raw
 
     @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_644554c', 'image': 'quay_image_62eaf6e', 'export_start': 'quay_export_start_57eed4f', 'export_size': 'quay_export_size_a1c02ff'}, 'from_image')
-    def quay_from_image(quay_cls_644554c, quay_image_62eaf6e: quay_Image, quay_export_start_57eed4f: int, quay_export_size_a1c02ff: int) -> 'ExportTrie':
-        quay_trie_172fc40 = quay_ExportTrie()
-        quay_endpoint_1f23066 = quay_export_start_57eed4f + quay_export_size_a1c02ff
-        _name_boundary.attributes(quay_trie_172fc40)['root'] = _name_boundary.attributes(quay_cls_644554c)['_read_node_tree_iter'](quay_image_62eaf6e, quay_export_start_57eed4f, quay_endpoint_1f23066)
-        quay_flat_5ce84aa: quay_List[quay_export_node] = []
-        quay_symbols_4a65150: quay_List[quay_Symbol] = []
-        quay_stack_1be153f = [_name_boundary.attributes(quay_trie_172fc40)['root']]
-        while quay_stack_1be153f:
-            quay_node_3ffa9b0 = quay_stack_1be153f.pop()
-            if _name_boundary.attributes(quay_node_3ffa9b0)['offset'] is not None:
-                quay_flat_5ce84aa.append(quay_export_node(_name_boundary.attributes(quay_node_3ffa9b0)['name'], _name_boundary.attributes(quay_node_3ffa9b0)['offset'], _name_boundary.attributes(quay_node_3ffa9b0)['flags']))
-                quay_symbols_4a65150.append(_name_boundary.attributes(quay_Symbol)['from_values'](_name_boundary.attributes(quay_node_3ffa9b0)['name'], _name_boundary.attributes(quay_node_3ffa9b0)['offset'], False))
-            quay_stack_1be153f.extend(_name_boundary.attributes(quay_node_3ffa9b0)['children'][::-1])
-        _name_boundary.attributes(quay_trie_172fc40)['nodes'] = quay_flat_5ce84aa
-        _name_boundary.attributes(quay_trie_172fc40)['symbols'] = quay_symbols_4a65150
-        _name_boundary.attributes(quay_trie_172fc40)['raw'] = _name_boundary.attributes(quay_image_62eaf6e)['read_bytearray'](quay_export_start_57eed4f, quay_export_size_a1c02ff)
-        return quay_trie_172fc40
+    def quay_from_image(cls, image, export_start, export_size):
+        from imagequay.byte_region import ByteRegion
+        result = cls()
+        if not export_size:
+            return result
+        region = ByteRegion(image, export_start, export_size)
+        result.root = cls._decode(region)
+        stack = [result.root]
+        while stack:
+            node = stack.pop()
+            if node.offset is not None:
+                result.nodes.append(quay_export_node(node.name, node.offset, node.flags))
+                symbol = quay_Symbol.from_values(node.name, node.offset, False)
+                symbol.reexport_ordinal = getattr(node, 'reexport_ordinal', None)
+                symbol.reexport_name = getattr(node, 'reexport_name', None)
+                symbol.resolver_offset = getattr(node, 'resolver_offset', None)
+                result.symbols.append(symbol)
+            stack.extend(node.children[::-1])
+        result.raw = image.read_bytearray(export_start, export_size)
+        return result
 
     @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_d4c14ab', 'image': 'quay_image_18e1cc9', 'trie_start': 'quay_trie_start_cea7cc3', 'endpoint': 'quay_endpoint_4c0f319'}, '_read_node_tree_iter')
-    def quay__read_node_tree_iter(quay_cls_d4c14ab, quay_image_18e1cc9: quay_Image, quay_trie_start_cea7cc3: int, quay_endpoint_4c0f319: int) -> quay_ExportNode:
-        """
-        Read a trie node and build an ExportNode tree using an explicit stack
-        instead of recursion.
-        """
-        quay_root_b921f70 = quay_ExportNode('', None, None)
-        quay_stack_6788f59: quay_List[quay_ExportNode, int] = [(quay_root_b921f70, quay_trie_start_cea7cc3)]
-        while quay_stack_6788f59:
-            quay_node_111dc93, quay_cursor_cb6cbd5 = quay_stack_6788f59.pop()
-            quay_terminal_size_02ce414, quay_cursor_cb6cbd5 = _name_boundary.attributes(quay_image_18e1cc9)['read_uleb128'](quay_cursor_cb6cbd5)
-            quay_child_start_82d1446 = quay_cursor_cb6cbd5 + quay_terminal_size_02ce414
-            if quay_terminal_size_02ce414 != 0:
-                quay___aec01c7, quay_cursor_cb6cbd5 = _name_boundary.attributes(quay_image_18e1cc9)['read_uleb128'](quay_cursor_cb6cbd5)
-                quay_flags_463f87f = _name_boundary.attributes(quay_image_18e1cc9)['read_uint'](quay_cursor_cb6cbd5, 1)
-                quay_cursor_cb6cbd5 += 1
-                quay_offset_27a2c9d, quay_cursor_cb6cbd5 = _name_boundary.attributes(quay_image_18e1cc9)['read_uleb128'](quay_cursor_cb6cbd5)
-                _name_boundary.attributes(quay_node_111dc93)['offset'] = quay_offset_27a2c9d
-                _name_boundary.attributes(quay_node_111dc93)['flags'] = quay_flags_463f87f
-            quay_cursor_cb6cbd5 = quay_child_start_82d1446
-            quay_branches_b7b378a = _name_boundary.attributes(quay_image_18e1cc9)['read_uint'](quay_cursor_cb6cbd5, 1)
-            quay_cursor_cb6cbd5 += 1
-            quay_branch_infos_9e0b6cf: quay_List[str, int] = []
-            for quay___aec01c7 in range(quay_branches_b7b378a):
-                quay_proc_str_6f55f0d = _name_boundary.attributes(quay_image_18e1cc9)['read_cstr'](quay_cursor_cb6cbd5)
-                quay_cursor_cb6cbd5 += len(quay_proc_str_6f55f0d) + 1
-                quay_offset_loc_3923948, quay_cursor_cb6cbd5 = _name_boundary.attributes(quay_image_18e1cc9)['read_uleb128'](quay_cursor_cb6cbd5)
-                if quay_offset_loc_3923948 == 0:
-                    _name_boundary.attributes(quay_log)['error']('Export trie has zero offset, table is malformed and unparsable')
-                    return quay_ExportNode('', None, None)
-                quay_branch_infos_9e0b6cf.append((quay_proc_str_6f55f0d, quay_offset_loc_3923948))
-            for quay_proc_str_6f55f0d, quay_offset_loc_3923948 in reversed(quay_branch_infos_9e0b6cf):
-                quay_child_6d396b0 = quay_ExportNode(_name_boundary.attributes(quay_node_111dc93)['name'] + quay_proc_str_6f55f0d, None, None)
-                _name_boundary.attributes(quay_node_111dc93)['children'].append(quay_child_6d396b0)
-                quay_stack_6788f59.append((quay_child_6d396b0, quay_trie_start_cea7cc3 + quay_offset_loc_3923948))
-        return quay_root_b921f70
+    def _decode(cls, region):
+        from imagequay.failure_types import quay_MalformedMachOException
+        root = quay_ExportNode('', None, None)
+        stack = [(root, region.start, False)]
+        active = set()
+        names_budget = 64 << 20
+        while stack:
+            node, cursor, closing = stack.pop()
+            if closing:
+                active.remove(cursor)
+                continue
+            region.use()
+            if cursor in active:
+                raise quay_MalformedMachOException('export trie contains a cycle')
+            if len(active) >= 4096:
+                raise quay_MalformedMachOException('export trie exceeds the 4096-node path depth budget')
+            if not region.start <= cursor < region.end:
+                raise quay_MalformedMachOException('export trie child lies outside its region')
+            active.add(cursor)
+            stack.append((node, cursor, True))
+            terminal_size, terminal = region.leb(cursor)
+            if terminal_size > region.end - terminal:
+                raise quay_MalformedMachOException('export terminal exceeds its region')
+            child_start = terminal + terminal_size
+            if terminal_size:
+                flags, terminal_cursor = region.leb(terminal, endpoint=child_start)
+                node.flags = flags
+                if flags & 8:  # EXPORT_SYMBOL_FLAGS_REEXPORT
+                    node.reexport_ordinal, terminal_cursor = region.leb(terminal_cursor, endpoint=child_start)
+                    node.reexport_name, terminal_cursor = region.cstring(terminal_cursor, endpoint=child_start)
+                    node.offset = 0  # Reexports carry an ordinal/name, not a local address.
+                else:
+                    node.offset, terminal_cursor = region.leb(terminal_cursor, endpoint=child_start)
+                    if flags & 16:  # EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER
+                        node.resolver_offset, terminal_cursor = region.leb(terminal_cursor, endpoint=child_start)
+                if terminal_cursor != child_start:
+                    raise quay_MalformedMachOException('export terminal fields and length disagree')
+            branches = region.uint(child_start, 1)
+            cursor = child_start + 1
+            edges = []
+            for _ in range(branches):
+                text, cursor = region.cstring(cursor)
+                relative, cursor = region.leb(cursor)
+                if not relative or relative >= region.end - region.start:
+                    raise quay_MalformedMachOException('export child offset is outside its region')
+                if not text or len((node.name + text).encode('utf-8')) > 1 << 20:
+                    raise quay_MalformedMachOException('export path is empty or exceeds the 1 MiB name budget')
+                edges.append((text, relative))
+            # Preserve inherited traversal ordering while each path has a cycle guard.
+            for text, relative in reversed(edges):
+                child_name = node.name + text
+                names_budget -= len(child_name.encode('utf-8'))
+                if names_budget < 0:
+                    raise quay_MalformedMachOException('export trie names exceed the 64 MiB aggregate budget')
+                child = quay_ExportNode(child_name, None, None)
+                node.children.append(child)
+                stack.append((child, region.start + relative, False))
+        return root
 
-    @_name_boundary.callable_contract({'self': 'quay_self_6ff5975'}, 'print_tree')
-    def quay_print_tree(quay_self_6ff5975):
-        """
-        Print the export trie as an ASCII tree starting from the root,
-        using an explicit stack instead of recursion.
-        """
-        if not _name_boundary.attributes(quay_self_6ff5975)['root']:
+    @classmethod
+    def quay__read_node_tree_iter(cls, image, trie_start, endpoint):
+        from imagequay.byte_region import ByteRegion
+        return cls._decode(ByteRegion(image, trie_start, endpoint - trie_start))
+
+    def quay_print_tree(self):
+        if not self.root:
             print('<empty export trie>')
             return
-        quay_stack_e8d56a0 = [(_name_boundary.attributes(quay_self_6ff5975)['root'], '', True)]
-        while quay_stack_e8d56a0:
-            quay_node_7e55181, quay_prefix_79efa98, quay_is_last_63a9ac0 = quay_stack_e8d56a0.pop()
-            quay_connector_9b6fa1c = '└── ' if quay_is_last_63a9ac0 else '├── '
-            if _name_boundary.attributes(quay_node_7e55181)['offset'] is not None:
-                quay_label_3a8c873 = f"{_name_boundary.attributes(quay_node_7e55181)['name']} (offset=0x{_name_boundary.attributes(quay_node_7e55181)['offset']:x}, flags=0x{_name_boundary.attributes(quay_node_7e55181)['flags']:x})"
-            else:
-                quay_label_3a8c873 = _name_boundary.attributes(quay_node_7e55181)['name'] or '<root>'
-            print(quay_prefix_79efa98 + quay_connector_9b6fa1c + quay_label_3a8c873)
-            quay_child_prefix_ac3eb20 = quay_prefix_79efa98 + ('    ' if quay_is_last_63a9ac0 else '│   ')
-            for quay_idx_cf5586e, quay_child_a83f3b8 in enumerate(reversed(_name_boundary.attributes(quay_node_7e55181)['children'])):
-                quay_last_818acf4 = quay_idx_cf5586e == 0
-                quay_stack_e8d56a0.append((quay_child_a83f3b8, quay_child_prefix_ac3eb20, quay_last_818acf4))
+        stack = [(self.root, '', True)]
+        while stack:
+            node, prefix, last = stack.pop()
+            label = repr(node.name) if node.name else '<root>'
+            if node.offset is not None:
+                label += f' (offset=0x{node.offset:x}, flags=0x{node.flags:x})'
+            print(prefix + ('└── ' if last else '├── ') + label)
+            child_prefix = prefix + ('    ' if last else '│   ')
+            for index, child in enumerate(reversed(node.children)):
+                stack.append((child, child_prefix, index == 0))
+
 quay_action = _name_boundary.named_record('action', ['vmaddr', 'libname', 'item'])
 quay_record = _name_boundary.named_record('record', ['off', 'seg_index', 'seg_offset', 'lib_ordinal', 'type', 'flags', 'name', 'addend', 'special_dylib'])
 
@@ -697,11 +712,13 @@ class quay_BindingTable:
 
     @_name_boundary.callable_contract({'self': 'quay_self_e8ee232', 'table_start': 'quay_table_start_41c98ec', 'table_size': 'quay_table_size_3469038'}, '_load_binding_info')
     def quay__load_binding_info(quay_self_e8ee232, quay_table_start_41c98ec: int, quay_table_size_3469038: int) -> quay_List[quay_record]:
+        region = ByteRegion(_name_boundary.attributes(quay_self_e8ee232)['image'], quay_table_start_41c98ec, quay_table_size_3469038)
         quay_read_address_8699fb3 = quay_table_start_41c98ec
         quay_import_stack_39d98bc = []
         quay_threaded_stack_be53686 = []
         quay_uses_threaded_bind_6f6861d = False
         while True:
+            region.use()
             if quay_read_address_8699fb3 - quay_table_size_3469038 >= quay_table_start_41c98ec:
                 break
             quay_seg_index_d15482f = 0
@@ -713,8 +730,9 @@ class quay_BindingTable:
             quay_addend_751bbd4 = 0
             quay_special_dylib_2495b2d = 0
             while True:
-                quay_binding_opcode_f4e891b = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uint'](quay_read_address_8699fb3, 1) & 240
-                quay_value_aa9f27d = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uint'](quay_read_address_8699fb3, 1) & 15
+                region.use()
+                quay_binding_opcode_f4e891b = region.uint(quay_read_address_8699fb3, 1) & 240
+                quay_value_aa9f27d = region.uint(quay_read_address_8699fb3, 1) & 15
                 _name_boundary.attributes(quay_log)['debug_tm'](f"{_name_boundary.attributes(quay_BINDING_OPCODE(quay_binding_opcode_f4e891b))['name']}: {hex(quay_value_aa9f27d)}")
                 quay_cmd_start_addr_5413880 = quay_read_address_8699fb3
                 quay_read_address_8699fb3 += 1
@@ -724,7 +742,7 @@ class quay_BindingTable:
                     _name_boundary.attributes(quay_log)['debug_tm'](f"@ {hex(quay_cmd_start_addr_5413880)} (-> {hex(quay_vm_address_c371d36)}) op->{_name_boundary.attributes(quay_BINDING_OPCODE(quay_binding_opcode_f4e891b))['name']} current->{quay_name_3fb5973}")
                 if quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.THREADED:
                     if quay_value_aa9f27d == quay_BIND_SUBOPCODE_THREADED_SET_BIND_ORDINAL_TABLE_SIZE_ULEB:
-                        quay_a_table_size_b501e92, quay_read_address_8699fb3 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uleb128'](quay_read_address_8699fb3)
+                        quay_a_table_size_b501e92, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
                         quay_uses_threaded_bind_6f6861d = True
                     elif quay_value_aa9f27d == quay_BIND_SUBOPCODE_THREADED_APPLY:
                         pass
@@ -734,35 +752,36 @@ class quay_BindingTable:
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_DYLIB_ORDINAL_IMM:
                     quay_lib_ordinal_68c3919 = quay_value_aa9f27d
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_DYLIB_ORDINAL_ULEB:
-                    quay_lib_ordinal_68c3919, quay_read_address_8699fb3 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uleb128'](quay_read_address_8699fb3)
+                    quay_lib_ordinal_68c3919, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_DYLIB_SPECIAL_IMM:
                     quay_special_dylib_2495b2d = 1
                     quay_lib_ordinal_68c3919 = quay_value_aa9f27d
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_SYMBOL_TRAILING_FLAGS_IMM:
                     quay_flags_4c6901b = quay_value_aa9f27d
-                    quay_name_3fb5973 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_cstr'](quay_read_address_8699fb3)
-                    quay_read_address_8699fb3 += len(quay_name_3fb5973) + 1
+                    quay_name_3fb5973 = region.cstring(quay_read_address_8699fb3)[0]
+                    quay_read_address_8699fb3 += len(quay_name_3fb5973.encode('utf-8')) + 1
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_TYPE_IMM:
                     quay_btype_ef14905 = quay_value_aa9f27d
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_ADDEND_SLEB:
-                    quay_addend_751bbd4, quay_read_address_8699fb3 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uleb128'](quay_read_address_8699fb3)
+                    quay_addend_751bbd4, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3, signed=True)
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_SEGMENT_AND_OFFSET_ULEB:
                     quay_seg_index_d15482f = quay_value_aa9f27d
-                    quay_seg_offset_2356fba, quay_read_address_8699fb3 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uleb128'](quay_read_address_8699fb3)
+                    quay_seg_offset_2356fba, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.ADD_ADDR_ULEB:
-                    quay_o_b97edfd, quay_read_address_8699fb3 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uleb128'](quay_read_address_8699fb3)
+                    quay_o_b97edfd, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
                     quay_seg_offset_2356fba += quay_o_b97edfd
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.DO_BIND_ADD_ADDR_ULEB:
                     quay_import_stack_39d98bc.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
                     quay_seg_offset_2356fba += _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size']
-                    quay_o_b97edfd, quay_read_address_8699fb3 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uleb128'](quay_read_address_8699fb3)
+                    quay_o_b97edfd, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
                     quay_seg_offset_2356fba += quay_o_b97edfd
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.DO_BIND_ADD_ADDR_IMM_SCALED:
                     quay_import_stack_39d98bc.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
                     quay_seg_offset_2356fba = quay_seg_offset_2356fba + quay_value_aa9f27d * _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size'] + _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size']
                 elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.DO_BIND_ULEB_TIMES_SKIPPING_ULEB:
-                    quay_count_1221439, quay_read_address_8699fb3 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uleb128'](quay_read_address_8699fb3)
-                    quay_skip_611aa0e, quay_read_address_8699fb3 = _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['read_uleb128'](quay_read_address_8699fb3)
+                    quay_count_1221439, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
+                    quay_skip_611aa0e, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
+                    region.use(quay_count_1221439)
                     for quay_i_89c187e in range(0, quay_count_1221439):
                         quay_import_stack_39d98bc.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
                         quay_seg_offset_2356fba += quay_skip_611aa0e + _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size']

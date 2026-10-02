@@ -25,7 +25,7 @@ import re as quay_re
 import shutil as quay_shutil
 from imagequay_layout import quay_Struct as quay_Struct, quay_FAT_CIGAM as quay_FAT_CIGAM, quay_FAT_MAGIC as quay_FAT_MAGIC, quay_MH_CIGAM as quay_MH_CIGAM, quay_MH_CIGAM_64 as quay_MH_CIGAM_64, quay_MH_MAGIC as quay_MH_MAGIC, quay_MH_MAGIC_64 as quay_MH_MAGIC_64
 from imagequay.failure_types import *
-import pkg_resources as quay_pkg_resources
+import importlib.metadata as quay_distribution_metadata
 import imagequay_support.diagnostics as quay_log
 from pygments import highlight as quay_highlight
 from pygments.formatters.terminal import TerminalFormatter as quay_TerminalFormatter
@@ -37,10 +37,10 @@ except:
     quay_XmlLexer = None
     quay_JsonLexer = None
 try:
-    quay_IMAGEQUAY_VERSION = _name_boundary.attributes(quay_pkg_resources.get_distribution('imagequay'))['version']
-except quay_pkg_resources.DistributionNotFound:
-    quay_IMAGEQUAY_VERSION = '1.0.0'
-quay_THREAD_COUNT = quay_os.cpu_count() - 1
+    quay_IMAGEQUAY_VERSION = quay_distribution_metadata.version('imagequay')
+except quay_distribution_metadata.PackageNotFoundError:
+    quay_IMAGEQUAY_VERSION = '1.0.2'
+quay_THREAD_COUNT = max(1, (quay_os.cpu_count() or 1) - 1)
 quay_OUT_IS_TTY = quay_sys.stdout.isatty()
 quay_MY_DIR = __file__
 
@@ -55,7 +55,7 @@ def quay_get_terminal_size():
 def quay_version_output():
     if quay_OUT_IS_TTY:
         pass
-    print(f'imagequay v{quay_IMAGEQUAY_VERSION}. by cynder. gh/0cyn')
+    print(f'ImageQuay v{quay_IMAGEQUAY_VERSION}; maintained derivative of ktool by cynder/0cyn')
 
 @_name_boundary.class_contract('ignore', {'MALFORMED': 'quay_MALFORMED', 'OBJC_ERRORS': 'quay_OBJC_ERRORS'})
 class quay_ignore:
@@ -500,4 +500,4 @@ def quay_imagequay_print(quay_msg_513d05e, quay_file_c6b3c22=quay_sys.stdout):
 @_name_boundary.callable_contract({'msg': 'quay_msg_5492a4b'}, 'print_err')
 def quay_print_err(quay_msg_5492a4b):
     print(quay_msg_5492a4b, file=quay_sys.stderr)
-_name_boundary.module_contract(globals(), {'THREAD_COUNT': 'quay_THREAD_COUNT', 'os': 'quay_os', 'MH_CIGAM_64': 'quay_MH_CIGAM_64', 'Table': 'quay_Table', 'MH_MAGIC_64': 'quay_MH_MAGIC_64', 'macho_is_malformed': 'quay_macho_is_malformed', 'print_err': 'quay_print_err', 'version_output': 'quay_version_output', 'get_terminal_size': 'quay_get_terminal_size', 'ansi_escape': 'quay_ansi_escape', 'ktool_print': 'quay_imagequay_print', 'FAT_CIGAM': 'quay_FAT_CIGAM', 'Queue': 'quay_Queue', 'highlight': 'quay_highlight', 'Union': 'quay_Union', 'ignore': 'quay_ignore', 'TapiYAMLWriter': 'quay_TapiYAMLWriter', 'MH_MAGIC': 'quay_MH_MAGIC', 'OUT_IS_TTY': 'quay_OUT_IS_TTY', 'MY_DIR': 'quay_MY_DIR', 'shutil': 'quay_shutil', 'usi32_to_si32': 'quay_usi32_to_si32', 'opts': 'quay_opts', 'MH_CIGAM': 'quay_MH_CIGAM', 'sys': 'quay_sys', 'Struct': 'quay_Struct', 'time': 'quay_time', 'Enum': 'quay_Enum', 'inspect': 'quay_inspect', 'List': 'quay_List', 'concurrent': 'quay_concurrent', 'TerminalFormatter': 'quay_TerminalFormatter', 'FileType': 'quay_FileType', 'strip_ansi': 'quay_strip_ansi', 'QueueItem': 'quay_QueueItem', 'highlight_xml': 'quay_highlight_xml', 'bytes_to_hex': 'quay_bytes_to_hex', 're': 'quay_re', 'highlight_json': 'quay_highlight_json', 'pkg_resources': 'quay_pkg_resources', 'uint_to_int': 'quay_uint_to_int', 'FAT_MAGIC': 'quay_FAT_MAGIC', 'log': 'quay_log', 'detect_filetype': 'quay_detect_filetype'})
+_name_boundary.module_contract(globals(), {'THREAD_COUNT': 'quay_THREAD_COUNT', 'os': 'quay_os', 'MH_CIGAM_64': 'quay_MH_CIGAM_64', 'Table': 'quay_Table', 'MH_MAGIC_64': 'quay_MH_MAGIC_64', 'macho_is_malformed': 'quay_macho_is_malformed', 'print_err': 'quay_print_err', 'version_output': 'quay_version_output', 'get_terminal_size': 'quay_get_terminal_size', 'ansi_escape': 'quay_ansi_escape', 'ktool_print': 'quay_imagequay_print', 'FAT_CIGAM': 'quay_FAT_CIGAM', 'Queue': 'quay_Queue', 'highlight': 'quay_highlight', 'Union': 'quay_Union', 'ignore': 'quay_ignore', 'TapiYAMLWriter': 'quay_TapiYAMLWriter', 'MH_MAGIC': 'quay_MH_MAGIC', 'OUT_IS_TTY': 'quay_OUT_IS_TTY', 'MY_DIR': 'quay_MY_DIR', 'shutil': 'quay_shutil', 'usi32_to_si32': 'quay_usi32_to_si32', 'opts': 'quay_opts', 'MH_CIGAM': 'quay_MH_CIGAM', 'sys': 'quay_sys', 'Struct': 'quay_Struct', 'time': 'quay_time', 'Enum': 'quay_Enum', 'inspect': 'quay_inspect', 'List': 'quay_List', 'concurrent': 'quay_concurrent', 'TerminalFormatter': 'quay_TerminalFormatter', 'FileType': 'quay_FileType', 'strip_ansi': 'quay_strip_ansi', 'QueueItem': 'quay_QueueItem', 'highlight_xml': 'quay_highlight_xml', 'bytes_to_hex': 'quay_bytes_to_hex', 're': 'quay_re', 'highlight_json': 'quay_highlight_json', 'uint_to_int': 'quay_uint_to_int', 'FAT_MAGIC': 'quay_FAT_MAGIC', 'log': 'quay_log', 'detect_filetype': 'quay_detect_filetype'})

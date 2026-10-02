@@ -27,10 +27,10 @@ from argparse import ArgumentParser as quay_ArgumentParser
 from collections import namedtuple as quay_namedtuple
 from enum import Enum as quay_Enum
 from typing import Union as quay_Union
-try:
-    from pkg_resources import packaging as quay_packaging
-except ImportError:
-    from pkg_resources._vendor import packaging as quay_packaging
+from packaging import version as quay_packaging_version
+from imagequay.file_ops import safe_open as open, metadata_leaf, set_overwrite
+from imagequay.update_reader import read_release
+from imagequay.toolkit_api import patch_image_header
 import imagequay as quay_imagequay
 from imagequay_layout import quay_LOAD_COMMAND as quay_LOAD_COMMAND
 from imagequay import quay_MachOFileType as quay_MachOFileType, quay_IMAGEQUAY_VERSION as quay_IMAGEQUAY_VERSION, quay_ignore as quay_ignore, quay_LogLevel as quay_LogLevel, quay_Table as quay_Table
@@ -50,20 +50,13 @@ quay_print = quay_imagequay_print
 @_name_boundary.callable_contract({'version': 'quay_version_891781d'}, 'handle_version')
 def quay_handle_version(quay_version_891781d: str):
     """ Used by check_for_update """
-    return _name_boundary.attributes(_name_boundary.attributes(quay_packaging)['version'])['parse'](quay_version_891781d)
+    return quay_packaging_version.parse(quay_version_891781d)
 
-@_name_boundary.callable_contract({}, 'check_for_update')
 def quay_check_for_update():
-    quay_endpoint_5e4c5bd = 'https://pypi.org/pypi/k2l/json'
-    try:
-        with quay_urllib.request.urlopen(quay_endpoint_5e4c5bd, timeout=1) as quay_url_2d90509:
-            quay_data_5cd275f = quay_json.loads(_name_boundary.attributes(quay_url_2d90509)['read']().decode(), strict=False)
-        quay_new_version_4307c95 = _name_boundary.attributes(_name_boundary.attributes(quay_data_5cd275f)['get']('info'))['get']('version')
-        if quay_handle_version(quay_IMAGEQUAY_VERSION) < quay_handle_version(quay_new_version_4307c95):
-            global quay_UPDATE_AVAILABLE
-            quay_UPDATE_AVAILABLE = True
-    except Exception:
-        pass
+    global quay_UPDATE_AVAILABLE
+    release = read_release(quay_IMAGEQUAY_VERSION)
+    quay_UPDATE_AVAILABLE = bool(release)
+    return release
 
 @_name_boundary.class_contract('KToolError', {})
 class quay_ImageQuayError(quay_Enum):
@@ -147,7 +140,9 @@ def quay_main():
     quay_parser_dcbfa10.add_argument('-c', dest='no_color', action='store_true')
     quay_parser_dcbfa10.add_argument('-f', dest='force_load', action='store_true')
     quay_parser_dcbfa10.add_argument('-V', dest='get_vers', action='store_true')
-    quay_parser_dcbfa10.add_argument('--mmap', dest='mmap', action='store_true', help='Enable mmaped IO')
+    quay_parser_dcbfa10.add_argument('--check-updates', action='store_true', help='Explicitly query ImageQuay release metadata; no software is downloaded')
+    quay_parser_dcbfa10.add_argument('--overwrite', action='store_true', help='Atomically replace existing regular output files')
+    quay_parser_dcbfa10.add_argument('--mmap', dest='mmap', action='store_true', help='Compatibility option; uses bounded private snapshot IO')
     quay_parser_dcbfa10.set_defaults(func=quay_help_prompt, bench=False, membench=False, force_load=False, mmap=False, logging_level=1, get_vers=False)
     quay_subparsers_aaffb0e = quay_parser_dcbfa10.add_subparsers(help='sub-command help')
     quay_commands_3070ec3 = quay_MachOFileCommands
@@ -234,9 +229,11 @@ def quay_main():
     quay_args_4f71994 = quay_parser_dcbfa10.parse_args()
     global quay_MAIN_PARSER
     quay_MAIN_PARSER = quay_parser_dcbfa10
-    if 'KTOOL_NO_UPDATE_CHECK' not in quay_os.environ:
-        quay_download_thread_d155ba0 = quay_threading.Thread(target=quay_check_for_update, name='UpdateChecker')
-        _name_boundary.attributes(quay_download_thread_d155ba0)['start']()
+    set_overwrite(quay_args_4f71994.overwrite)
+    if quay_args_4f71994.check_updates:
+        release = quay_check_for_update()
+        if release:
+            quay_print(f'ImageQuay release available: {release}')
     if quay_args_4f71994.get_vers:
         quay_version_output()
         exit()
@@ -277,14 +274,14 @@ def quay_main():
         except quay_UnsupportedFiletypeException:
             quay_exit_with_error(quay_ImageQuayError.FiletypeError, f"{_name_boundary.attributes(quay_args_4f71994)['filename']} is not a valid MachO Binary")
         except FileNotFoundError as quay_ex_a867a75:
-            raise quay_ex_a867a75
             quay_exit_with_error(quay_ImageQuayError.ArgumentError, f"{_name_boundary.attributes(quay_args_4f71994)['filename']} does not exist")
+        except (OSError, ValueError) as local_error:
+            quay_exit_with_error(quay_ImageQuayError.ProcessingError, str(local_error))
         except quay_MalformedMachOException:
-            quay_exit_with_error(quay_ImageQuayError.MalformedMachOError, f'Malformed MachO. Pass -f to force loading whatever possible')
+            quay_exit_with_error(quay_ImageQuayError.MalformedMachOError, 'Malformed Mach-O. Bounds checks cannot be bypassed by -f.')
     if quay_UPDATE_AVAILABLE:
         quay_print(f'\n\nUpdate Available ---')
-        quay_print(f'run `pip3 install --upgrade k2l` to fetch the latest update')
-        quay_print(f'set the envar KTOOL_NO_UPDATE_CHECK to disable update checks')
+        quay_print('Review ImageQuay releases at https://github.com/dhtfish-98/ImageQuay/releases')
     exit(0)
 
 @_name_boundary.callable_contract({}, 'help_prompt')
@@ -313,7 +310,9 @@ MachO Analysis ---
 Run `imagequay [command]` for info/examples on using that command
 
 Global Flags:
-    -f - Force Load (ignores malformations in the MachO and tries to load whatever it can)
+    -f - Hide unsupported-command warnings; binary bounds remain enforced.
+    --check-updates - Explicitly query ImageQuay release metadata.
+    --overwrite - Atomically replace existing regular output files.
     -v [-1 through 5] - Log verbosiy. -1 completely silences logging.
     -V - Print version string (`imagequay -V | cat`) to disable the animation
         """
@@ -512,7 +511,7 @@ class quay_MachOFileCommands:
                 quay_dylib_item_727cd48 = _name_boundary.attributes(quay_Struct)['create_with_values'](quay_dylib, [24, 2, 65536, 65536])
                 quay_dylib_cmd_abafa7f = _name_boundary.attributes(quay_Struct)['create_with_values'](quay_dylib_command, [_name_boundary.attributes(quay_lc_90ad0bb)['value'], 0, _name_boundary.attributes(quay_dylib_item_727cd48)['raw']])
                 quay_new_header_66c052b = _name_boundary.attributes(_name_boundary.attributes(quay_image_470a639)['macho_header'])['insert_load_command'](quay_dylib_cmd_abafa7f, quay_last_dylib_command_index_4140c1c, suffix=quay_args_7ac92ac.payload)
-                _name_boundary.attributes(_name_boundary.attributes(quay_image_470a639)['slice'])['patch'](0, _name_boundary.attributes(quay_new_header_66c052b)['raw'])
+                patch_image_header(quay_image_470a639, quay_new_header_66c052b)
                 _name_boundary.attributes(quay_log)['info']('Reloading MachO Slice to verify integrity')
                 quay_image_470a639 = quay_process_patches(quay_image_470a639)
                 quay_patched_libraries_6b7150e.append(quay_image_470a639)
@@ -553,7 +552,7 @@ class quay_MachOFileCommands:
                     quay_dylib_item_472f1e9 = _name_boundary.attributes(quay_Struct)['create_with_values'](quay_dylib, [24, 1, 0, 0])
                     quay_new_cmd_420ebc9 = _name_boundary.attributes(quay_Struct)['create_with_values'](quay_dylib_command, [quay_LOAD_COMMAND.ID_DYLIB, 0, _name_boundary.attributes(quay_dylib_item_472f1e9)['raw']])
                     quay_new_header_67306cf = _name_boundary.attributes(_name_boundary.attributes(quay_image_26d299f)['macho_header'])['replace_load_command'](quay_new_cmd_420ebc9, quay_id_dylib_index_ab170eb, quay_new_iname_1a721c5)
-                    _name_boundary.attributes(_name_boundary.attributes(quay_image_26d299f)['slice'])['patch'](0, _name_boundary.attributes(quay_new_header_67306cf)['raw'])
+                    patch_image_header(quay_image_26d299f, quay_new_header_67306cf)
                     quay_patched_libraries_2c5b1dd.append(quay_image_26d299f)
             with open(quay_args_982fb76.out, 'wb') as quay_fd_11ed48c:
                 if len(quay_patched_libraries_2c5b1dd) > 1:
@@ -754,7 +753,7 @@ class quay_MachOFileCommands:
                         pass
                     else:
                         quay_os.makedirs(quay_args_662825f.outdir, exist_ok=True)
-                        with open(quay_args_662825f.outdir + '/' + quay_header_name_66f6264, 'w') as quay_out_6f02b53:
+                        with open(quay_args_662825f.outdir + '/' + metadata_leaf(quay_header_name_66f6264), 'w') as quay_out_6f02b53:
                             _name_boundary.attributes(quay_out_6f02b53)['write'](str(quay_header_c5ac74b))
                     if quay_args_662825f.bench:
                         pass
@@ -817,7 +816,7 @@ class quay_MachOFileCommands:
                         quay_kext_b5343ec = quay__kext_a66d0f4
                         break
             if isinstance(quay_kext_b5343ec, quay_EmbeddedKext):
-                with open(_name_boundary.attributes(quay_kext_b5343ec)['id'].split('.')[-1], 'wb') as quay_out_8078798:
+                with open(metadata_leaf(_name_boundary.attributes(quay_kext_b5343ec)['id'].split('.')[-1]), 'wb') as quay_out_8078798:
                     _name_boundary.attributes(quay_out_8078798)['write'](_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_kext_b5343ec)['image'])['slice'])['full_bytes_for_slice']())
             else:
                 quay_print('Kext Not Found')

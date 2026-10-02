@@ -1,77 +1,90 @@
-# Derived from src/ktool/codesign.py; original copyright and license in ORIGIN.md and LICENSE.
-#
-#  ktool | ktool
-#  codesign.py
-#
-#
-#
-#  This file is part of ktool. ktool is free software that
-#  is made available under the MIT license. Consult the
-#  file "LICENSE" that is distributed together with this file
-#  for the exact licensing terms.
-#
-#  Copyright (c) 0cyn 2022.
-#
-import imagequay_boundary as _name_boundary
+# Derived from ktool; Copyright (c) 0cyn 2022. MIT license in LICENSE.
+"""Read signature metadata with every slot confined to its declared SuperBlob.
+
+This is structural metadata analysis. It does not validate signing trust,
+revocation, executable integrity, identity, or platform acceptance.
+"""
+import struct
 from typing import List as quay_List
-from imagequay_layout.record_contract import quay_Constructable as quay_Constructable
-from imagequay_layout.binary_records import quay_linkedit_data_command as quay_linkedit_data_command
+import imagequay_boundary as _name_boundary
+from imagequay_layout.record_contract import quay_Constructable
+from imagequay_layout.binary_records import quay_linkedit_data_command
 from imagequay_layout.signing_records import *
-from imagequay_support.diagnostics import quay_log as quay_log
+from imagequay_support.diagnostics import quay_log
+from imagequay.failure_types import quay_MalformedMachOException
+from imagequay.container_io import checked_range
 
-@_name_boundary.callable_contract({'value': 'quay_value_6bf628e'}, 'swap_32')
-def quay_swap_32(quay_value_6bf628e: int):
-    quay_value_6bf628e = quay_value_6bf628e >> 8 & 16711935 | quay_value_6bf628e << 8 & 4278255360
-    quay_value_6bf628e = quay_value_6bf628e >> 16 & 65535 | quay_value_6bf628e << 16 & 4294901760
-    return quay_value_6bf628e
 
-@_name_boundary.class_contract('CodesignInfo', {'from_image': 'quay_from_image', 'from_values': 'quay_from_values', 'raw_bytes': 'quay_raw_bytes', 'superblob': 'quay_superblob', 'slots': 'quay_slots', 'entitlements': 'quay_entitlements', 'req_dat': 'quay_req_dat'})
+def quay_swap_32(value):
+    if type(value) is not int or not 0 <= value <= 0xffffffff:
+        raise ValueError('swap_32 requires an unsigned 32-bit integer')
+    return int.from_bytes(value.to_bytes(4, 'little'), 'big')
+
+
+@_name_boundary.class_contract('CodesignInfo', {'from_image':'quay_from_image', 'from_values':'quay_from_values', 'raw_bytes':'quay_raw_bytes', 'superblob':'quay_superblob', 'slots':'quay_slots', 'entitlements':'quay_entitlements', 'req_dat':'quay_req_dat'})
 class quay_CodesignInfo(quay_Constructable):
+    @classmethod
+    def quay_from_image(cls, image, codesign_cmd):
+        start, size = codesign_cmd.dataoff, codesign_cmd.datasize
+        checked_range(image.slice.size, start, size, 'code signature region')
+        if size < 12:
+            raise quay_MalformedMachOException('code signature is shorter than a SuperBlob header')
+        prefix = image.read_bytearray(start, 12)
+        magic, length, count = struct.unpack('>III', prefix)
+        if magic not in (quay_CSMAGIC_EMBEDDED_SIGNATURE, quay_CSMAGIC_DETACHED_SIGNATURE):
+            raise quay_MalformedMachOException('signature is not a supported SuperBlob')
+        if length < 12 or length > size or count > (length - 12) // 8:
+            raise quay_MalformedMachOException('signature length or index count exceeds its region')
+        table_end = 12 + count * 8
+        # Keep the inherited raw SuperBlob public record representation.
+        superblob = image.read_struct(start, quay_SuperBlob, endian='little')
+        slots, intervals, types = [], [], set()
+        entitlements, requirements = '', None
+        for index in range(count):
+            index_start = start + 12 + index * 8
+            kind, relative = struct.unpack('>II', image.read_bytearray(index_start, 8))
+            if kind in types:
+                raise quay_MalformedMachOException('signature contains a duplicate slot type')
+            types.add(kind)
+            if relative < table_end:
+                raise quay_MalformedMachOException('signature slot overlaps the index table')
+            checked_range(length, relative, 8, 'signature slot header')
+            blob_magic, blob_length = struct.unpack('>II', image.read_bytearray(start + relative, 8))
+            if blob_length < 8:
+                raise quay_MalformedMachOException('signature slot is shorter than its blob header')
+            checked_range(length, relative, blob_length, 'signature slot body')
+            intervals.append((relative, relative + blob_length))
+            slot = image.read_struct(index_start, quay_BlobIndex, endian='little')
+            slot.type, slot.offset = kind, relative
+            slots.append(slot)
+            payload_start, payload_length = start + relative + 8, blob_length - 8
+            if kind == quay_CSSLOT_ENTITLEMENTS:
+                if blob_magic != quay_CSMAGIC_EMBEDDED_ENTITLEMENTS:
+                    raise quay_MalformedMachOException('entitlement slot has the wrong blob magic')
+                entitlements = image.read_fixed_len_str(payload_start, payload_length)
+            elif kind == quay_CSSLOT_REQUIREMENTS:
+                if blob_magic != quay_CSMAGIC_REQUIREMENTS:
+                    raise quay_MalformedMachOException('requirement slot has the wrong blob magic')
+                requirements = image.read_bytearray(payload_start, payload_length)
+        ordered = sorted(intervals)
+        if any(left[1] > right[0] for left, right in zip(ordered, ordered[1:])):
+            raise quay_MalformedMachOException('signature slot bodies overlap')
+        result = cls(superblob, slots, entitlements=entitlements, req_dat=requirements)
+        result._raw = image.read_bytearray(start, length)
+        return result
 
     @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_1686436', 'image': 'quay_image_2ace247', 'codesign_cmd': 'quay_codesign_cmd_7657e88'}, 'from_image')
-    def quay_from_image(quay_cls_1686436, quay_image_2ace247, quay_codesign_cmd_7657e88: quay_linkedit_data_command):
-        quay_superblob_35e13a8: quay_SuperBlob = _name_boundary.attributes(quay_image_2ace247)['read_struct'](_name_boundary.attributes(quay_codesign_cmd_7657e88)['dataoff'], quay_SuperBlob)
-        quay_slots_8609295: quay_List[quay_BlobIndex] = []
-        quay_off_d666714 = _name_boundary.attributes(quay_codesign_cmd_7657e88)['dataoff'] + _name_boundary.attributes(quay_SuperBlob)['size']()
-        quay_req_dat_f6cde79 = None
-        quay_entitlements_ff8ff4f = ''
-        quay_requirements_c4f3988 = ''
-        for quay_i_13a2767 in range(quay_swap_32(_name_boundary.attributes(quay_superblob_35e13a8)['count'])):
-            quay_blob_index_54735a8 = _name_boundary.attributes(quay_image_2ace247)['read_struct'](quay_off_d666714, quay_BlobIndex)
-            _name_boundary.attributes(quay_blob_index_54735a8)['type'] = quay_swap_32(_name_boundary.attributes(quay_blob_index_54735a8)['type'])
-            _name_boundary.attributes(quay_blob_index_54735a8)['offset'] = quay_swap_32(_name_boundary.attributes(quay_blob_index_54735a8)['offset'])
-            quay_slots_8609295.append(quay_blob_index_54735a8)
-            quay_off_d666714 += _name_boundary.attributes(quay_BlobIndex)['size']()
-        for quay_blob_7c3fdb0 in quay_slots_8609295:
-            if _name_boundary.attributes(quay_blob_7c3fdb0)['type'] == quay_CSSLOT_ENTITLEMENTS:
-                quay_start_e1f16f4 = _name_boundary.attributes(quay_superblob_35e13a8)['off'] + _name_boundary.attributes(quay_blob_7c3fdb0)['offset']
-                quay_ent_blob_04d2a23 = _name_boundary.attributes(quay_image_2ace247)['read_struct'](quay_start_e1f16f4, quay_Blob)
-                _name_boundary.attributes(quay_ent_blob_04d2a23)['magic'] = quay_swap_32(_name_boundary.attributes(quay_ent_blob_04d2a23)['magic'])
-                _name_boundary.attributes(quay_ent_blob_04d2a23)['length'] = quay_swap_32(_name_boundary.attributes(quay_ent_blob_04d2a23)['length'])
-                quay_ent_size_2428d69 = _name_boundary.attributes(quay_ent_blob_04d2a23)['length']
-                quay_entitlements_ff8ff4f = _name_boundary.attributes(quay_image_2ace247)['read_fixed_len_str'](quay_start_e1f16f4 + _name_boundary.attributes(quay_Blob)['size'](), quay_ent_size_2428d69 - _name_boundary.attributes(quay_Blob)['size']())
-            elif _name_boundary.attributes(quay_blob_7c3fdb0)['type'] == quay_CSSLOT_REQUIREMENTS:
-                quay_start_e1f16f4 = _name_boundary.attributes(quay_superblob_35e13a8)['off'] + _name_boundary.attributes(quay_blob_7c3fdb0)['offset']
-                quay_req_blob_65c7ea9 = _name_boundary.attributes(quay_image_2ace247)['read_struct'](quay_start_e1f16f4, quay_Blob)
-                _name_boundary.attributes(quay_req_blob_65c7ea9)['magic'] = quay_swap_32(_name_boundary.attributes(quay_req_blob_65c7ea9)['magic'])
-                _name_boundary.attributes(quay_req_blob_65c7ea9)['length'] = quay_swap_32(_name_boundary.attributes(quay_req_blob_65c7ea9)['length'])
-                quay_req_dat_f6cde79 = _name_boundary.attributes(quay_image_2ace247)['read_bytearray'](quay_start_e1f16f4 + _name_boundary.attributes(quay_Blob)['size'](), _name_boundary.attributes(quay_req_blob_65c7ea9)['length'] - _name_boundary.attributes(quay_Blob)['size']())
-        return quay_cls_1686436(quay_superblob_35e13a8, quay_slots_8609295, entitlements=quay_entitlements_ff8ff4f, req_dat=quay_req_dat_f6cde79)
+    def quay_from_values(cls, *args, **kwargs):
+        raise NotImplementedError('signature construction and signing are not implemented')
 
-    @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_462ece3', 'args': 'quay_args_dcb4e70', 'kwargs': 'quay_kwargs_882350c'}, 'from_values')
-    def quay_from_values(quay_cls_462ece3, *quay_args_dcb4e70, **quay_kwargs_882350c):
-        pass
+    def quay_raw_bytes(self):
+        if self._raw is None:
+            raise ValueError('no stored signature bytes are available')
+        return self._raw
 
-    @_name_boundary.callable_contract({'self': 'quay_self_3822b11'}, 'raw_bytes')
-    def quay_raw_bytes(quay_self_3822b11):
-        pass
+    def __init__(self, superblob, slots, entitlements=None, req_dat=None):
+        self.superblob, self.slots = superblob, slots
+        self.entitlements, self.req_dat = entitlements, req_dat
+        self._raw = None
 
-    @_name_boundary.callable_contract({'self': 'quay_self_7d49d2d', 'superblob': 'quay_superblob_f667335', 'slots': 'quay_slots_b72f4de', 'entitlements': 'quay_entitlements_13e200f', 'req_dat': 'quay_req_dat_2f7eec3'}, '__init__')
-    def __init__(quay_self_7d49d2d, quay_superblob_f667335, quay_slots_b72f4de, quay_entitlements_13e200f=None, quay_req_dat_2f7eec3=None):
-        _name_boundary.attributes(quay_self_7d49d2d)['superblob'] = quay_superblob_f667335
-        _name_boundary.attributes(quay_self_7d49d2d)['slots'] = quay_slots_b72f4de
-        _name_boundary.attributes(quay_self_7d49d2d)['entitlements'] = quay_entitlements_13e200f
-        _name_boundary.attributes(quay_self_7d49d2d)['req_dat'] = quay_req_dat_2f7eec3
 _name_boundary.module_contract(globals(), {'swap_32': 'quay_swap_32', 'Constructable': 'quay_Constructable', 'linkedit_data_command': 'quay_linkedit_data_command', 'CodesignInfo': 'quay_CodesignInfo', 'log': 'quay_log', 'List': 'quay_List'})

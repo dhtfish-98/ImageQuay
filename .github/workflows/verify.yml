@@ -26,3 +26,4 @@ jobs:
       - run: python -m venv .consumer
       - run: .consumer/bin/python -m pip install dist/*.whl
       - run: .consumer/bin/python -I checks/consume_installation.py
+      - run: .consumer/bin/python -I checks/consume_editing_cli.py

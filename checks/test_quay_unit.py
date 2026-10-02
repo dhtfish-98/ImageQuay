@@ -450,10 +450,9 @@ class quay_MachOLoaderTestCase(quay_unittest.TestCase):
             _name_boundary.attributes(quay_arch_struct_054a4d4)['offset'] = 3735928559
             _name_boundary.attributes(_name_boundary.attributes(quay_self_0c0b29b)['fat'])['write'](_name_boundary.attributes(quay_arch_struct_054a4d4)['off'], _name_boundary.attributes(quay_arch_struct_054a4d4)['raw'])
         quay_enable_error_capture()
-        quay_macho_3f1be9a = quay_imagequay.load_macho_file(_name_boundary.attributes(_name_boundary.attributes(quay_self_0c0b29b)['fat'])['get']())
-        quay_self_0c0b29b.assertIn('has bad magic 0x0', quay_error_buffer)
+        with quay_self_0c0b29b.assertRaises(quay_MalformedMachOException):
+            quay_imagequay.load_macho_file(_name_boundary.attributes(_name_boundary.attributes(quay_self_0c0b29b)['fat'])['get']())
         quay_disable_error_capture()
-        quay_self_0c0b29b.assertLess(len(_name_boundary.attributes(quay_macho_3f1be9a)['slices']), 2)
 
     @_name_boundary.callable_contract({'self': 'quay_self_1d26664'}, 'test_slice_count')
     def quay_test_slice_count(quay_self_1d26664):
@@ -602,7 +601,8 @@ class quay_ImageTestCase(quay_unittest.TestCase):
         quay_dat_6b2e7e2 = int.from_bytes(quay_dat_6b2e7e2, 'little')
         quay_dat_6b2e7e2 -= 4096
         _name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['write'](136, quay_dat_6b2e7e2.to_bytes(8, 'little'))
-        quay_image_8990831 = _name_boundary.attributes(quay_imagequay)['load_image'](_name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['get']())
+        with quay_self_2dc2cc2.assertRaises(quay_VMAddressingError):
+            quay_image_8990831 = _name_boundary.attributes(quay_imagequay)['load_image'](_name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['get']())
         _name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['reset']()
         quay_image_8990831 = _name_boundary.attributes(quay_imagequay)['load_image'](_name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['get']())
         quay_dat_6b2e7e2 = _name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['read'](128, 8)
@@ -613,7 +613,8 @@ class quay_ImageTestCase(quay_unittest.TestCase):
         quay_dat_6b2e7e2 = int.from_bytes(quay_dat_6b2e7e2, 'little')
         quay_dat_6b2e7e2 -= 4100
         _name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['write'](136, quay_dat_6b2e7e2.to_bytes(8, 'little'))
-        quay_image_8990831 = _name_boundary.attributes(quay_imagequay)['load_image'](_name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['get']())
+        with quay_self_2dc2cc2.assertRaises(quay_VMAddressingError):
+            quay_image_8990831 = _name_boundary.attributes(quay_imagequay)['load_image'](_name_boundary.attributes(_name_boundary.attributes(quay_self_2dc2cc2)['thin'])['get']())
 
     @_name_boundary.callable_contract({'self': 'quay_self_23ab95e'}, 'test_rw_prims')
     def quay_test_rw_prims(quay_self_23ab95e):

@@ -13,173 +13,110 @@ from imagequay.container_io import quay_Slice as quay_Slice, quay_SlicedBackingF
 quay_os_version = _name_boundary.named_record('os_version', ['x', 'y', 'z'])
 quay__fakeseg = _name_boundary.named_record('_fakeseg', ['vm_address', 'file_address', 'size'])
 
-@_name_boundary.class_contract('VM', {'vm_check': 'quay_vm_check', 'add_segment': 'quay_add_segment', 'translate': 'quay_translate', 'de_translate': 'quay_de_translate', 'map_pages': 'quay_map_pages', 'page_size': 'quay_page_size', 'page_size_bits': 'quay_page_size_bits', 'page_table': 'quay_page_table', 'tlb': 'quay_tlb', 'segs': 'quay_segs', 'vm_base_addr': 'quay_vm_base_addr', 'dirty': 'quay_dirty', 'fallback': 'quay_fallback', 'detag_kern_64': 'quay_detag_kern_64', 'detag_64': 'quay_detag_64'})
-class quay_VM:
-    """
-    New Virtual Address translation based on actual VM -> physical pages
+class _Ranges:
+    """Half-open file-backed interval mapping; allocation is O(segment count)."""
+    def _normalized(self, address):
+        if type(address) is not int or address < 0:
+            raise quay_VMAddressingError('address must be a nonnegative integer')
+        if self.detag_kern_64:
+            address |= 0xffff000000000000
+        if self.detag_64:
+            address &= 0xfffffffff
+        return address
 
-    """
+    def quay_translate(self, address):
+        address = self._normalized(address)
+        for virtual, (physical, size) in self.segs.items():
+            if virtual <= address < virtual + size:
+                return physical + address - virtual
+        raise quay_VMAddressingError(f'Address {address:#x} is outside file-backed VM ranges')
 
-    @_name_boundary.callable_contract({'self': 'quay_self_48102b2', 'page_size': 'quay_page_size_4f5d3f2'}, '__init__')
-    def __init__(quay_self_48102b2, quay_page_size_4f5d3f2):
-        _name_boundary.attributes(quay_self_48102b2)['page_size'] = quay_page_size_4f5d3f2
-        _name_boundary.attributes(quay_self_48102b2)['page_size_bits'] = (_name_boundary.attributes(quay_self_48102b2)['page_size'] - 1).bit_length()
-        _name_boundary.attributes(quay_self_48102b2)['page_table'] = {}
-        _name_boundary.attributes(quay_self_48102b2)['tlb'] = {}
-        _name_boundary.attributes(quay_self_48102b2)['segs'] = {}
-        _name_boundary.attributes(quay_self_48102b2)['vm_base_addr'] = None
-        _name_boundary.attributes(quay_self_48102b2)['dirty'] = False
-        _name_boundary.attributes(quay_self_48102b2)['fallback']: quay_MisalignedVM = quay_MisalignedVM()
-        _name_boundary.attributes(quay_self_48102b2)['detag_kern_64'] = False
-        _name_boundary.attributes(quay_self_48102b2)['detag_64'] = False
+    def quay_de_translate(self, file_address):
+        if type(file_address) is not int or file_address < 0:
+            raise quay_VMAddressingError('file address must be a nonnegative integer')
+        for virtual, (physical, size) in self.segs.items():
+            if physical <= file_address < physical + size:
+                return virtual + file_address - physical
+        raise quay_VMAddressingError(f'Could not de_translate address {file_address}')
 
-    @_name_boundary.callable_contract({'self': 'quay_self_431e443'}, '__str__')
-    def __str__(quay_self_431e443):
-        quay_table_92f12cb = quay_Table(dividers=True, avoid_wrapping_titles=True)
-        _name_boundary.attributes(quay_table_92f12cb)['titles'] = ['VM Start', 'VM End', 'File Start', 'File End', 'Size']
-        _name_boundary.attributes(quay_table_92f12cb)['size_pinned_columns'] = [0, 1]
-        for quay_vm_addr_108c172 in _name_boundary.attributes(quay_self_431e443)['segs'].keys():
-            _name_boundary.attributes(quay_table_92f12cb)['rows'].append([hex(quay_vm_addr_108c172), hex(quay_vm_addr_108c172 + _name_boundary.attributes(quay_self_431e443)['segs'][quay_vm_addr_108c172][1]), hex(_name_boundary.attributes(quay_self_431e443)['segs'][quay_vm_addr_108c172][0]), hex(_name_boundary.attributes(quay_self_431e443)['segs'][quay_vm_addr_108c172][0] + _name_boundary.attributes(quay_self_431e443)['segs'][quay_vm_addr_108c172][1]), hex(_name_boundary.attributes(quay_self_431e443)['segs'][quay_vm_addr_108c172][1])])
-        return _name_boundary.attributes(quay_table_92f12cb)['fetch_all'](quay_get_terminal_size().columns - 5)
-
-    @_name_boundary.callable_contract({'self': 'quay_self_e958e63', 'address': 'quay_address_59fab4f'}, 'vm_check')
-    def quay_vm_check(quay_self_e958e63, quay_address_59fab4f):
+    def quay_vm_check(self, address):
         try:
-            _name_boundary.attributes(quay_self_e958e63)['translate'](quay_address_59fab4f)
+            self.quay_translate(address)
             return True
-        except ValueError:
+        except quay_VMAddressingError:
             return False
 
-    @_name_boundary.callable_contract({'self': 'quay_self_a988324', 'segment': 'quay_segment_99a5948'}, 'add_segment')
-    def quay_add_segment(quay_self_a988324, quay_segment_99a5948: quay_Segment):
-        if _name_boundary.attributes(quay_segment_99a5948)['name'] == '__PAGEZERO':
+    def _add_range(self, physical, virtual, size):
+        if any(type(value) is not int or value < 0 for value in (physical, virtual, size)):
+            raise quay_VMAddressingError('VM range coordinates must be nonnegative integers')
+        if virtual + size > 1 << 64 or physical + size > 1 << 64:
+            raise quay_VMAddressingError('VM range overflows 64 bits')
+        if size == 0:
             return
-        if _name_boundary.attributes(quay_self_a988324)['vm_base_addr'] is None:
-            _name_boundary.attributes(quay_self_a988324)['vm_base_addr'] = _name_boundary.attributes(quay_segment_99a5948)['vm_address']
-        _name_boundary.attributes(quay_self_a988324)['map_pages'](_name_boundary.attributes(quay_segment_99a5948)['file_address'], _name_boundary.attributes(quay_segment_99a5948)['vm_address'], _name_boundary.attributes(quay_segment_99a5948)['size'])
+        for previous, (_, previous_size) in self.segs.items():
+            if max(previous, virtual) < min(previous + previous_size, virtual + size):
+                if previous == virtual and self.segs[previous] == [physical, size]:
+                    return
+                raise quay_VMAddressingError('overlapping virtual mappings are ambiguous')
+        self.segs[virtual] = [physical, size]
+        self.cache.clear()
 
-    @_name_boundary.callable_contract({'self': 'quay_self_5435725', 'address': 'quay_address_7cf34a1'}, 'translate')
-    def quay_translate(quay_self_5435725, quay_address_7cf34a1) -> int:
-        quay_l_addr_b8d1d8a = quay_address_7cf34a1
-        if _name_boundary.attributes(quay_self_5435725)['detag_kern_64']:
-            quay_address_7cf34a1 = quay_address_7cf34a1 | 65535 << 12 * 4
-        if _name_boundary.attributes(quay_self_5435725)['detag_64']:
-            quay_address_7cf34a1 = quay_address_7cf34a1 & 68719476735
-        try:
-            return _name_boundary.attributes(quay_self_5435725)['tlb'][quay_address_7cf34a1]
-        except KeyError:
-            pass
-        quay_page_offset_69b05da = quay_address_7cf34a1 & _name_boundary.attributes(quay_self_5435725)['page_size'] - 1
-        quay_page_location_8a7d81b = quay_address_7cf34a1 >> _name_boundary.attributes(quay_self_5435725)['page_size_bits']
-        try:
-            quay_phys_page_d9d40f7 = _name_boundary.attributes(quay_self_5435725)['page_table'][quay_page_location_8a7d81b]
-            quay_physical_location_25b2983 = quay_phys_page_d9d40f7 + quay_page_offset_69b05da
-            _name_boundary.attributes(quay_self_5435725)['tlb'][quay_address_7cf34a1] = quay_physical_location_25b2983
-            return quay_physical_location_25b2983
-        except KeyError:
-            _name_boundary.attributes(quay_log)['info'](f'Address {hex(quay_address_7cf34a1)} not mapped, attempting fallback')
-            try:
-                return _name_boundary.attributes(_name_boundary.attributes(quay_self_5435725)['fallback'])['translate'](quay_address_7cf34a1)
-            except quay_VMAddressingError:
-                raise quay_VMAddressingError(f'Address {hex(quay_address_7cf34a1)} ({hex(quay_l_addr_b8d1d8a)}) not in VA Table or fallback map. (page: {hex(quay_page_location_8a7d81b)})')
+    def __str__(self):
+        table = quay_Table(dividers=True, avoid_wrapping_titles=True)
+        table.titles = ['VM Start', 'VM End', 'File Start', 'File End', 'Size']
+        table.size_pinned_columns = [0, 1]
+        for virtual, (physical, size) in self.segs.items():
+            table.rows.append([hex(virtual), hex(virtual + size), hex(physical), hex(physical + size), hex(size)])
+        return table.fetch_all(quay_get_terminal_size().columns - 5)
 
-    @_name_boundary.callable_contract({'self': 'quay_self_4416554', 'file_address': 'quay_file_address_147e479'}, 'de_translate')
-    def quay_de_translate(quay_self_4416554, quay_file_address_147e479):
-        """
-        This method is slow, and should only be used for introspection, and not things that need to be fast.
 
-        :param file_address:
-        :return:
-        """
-        return _name_boundary.attributes(_name_boundary.attributes(quay_self_4416554)['fallback'])['de_translate'](quay_file_address_147e479)
-
-    @_name_boundary.callable_contract({'self': 'quay_self_62930ae', 'physical_addr': 'quay_physical_addr_fd660fd', 'virtual_addr': 'quay_virtual_addr_bfc70fc', 'size': 'quay_size_1a60c66'}, 'map_pages')
-    def quay_map_pages(quay_self_62930ae, quay_physical_addr_fd660fd, quay_virtual_addr_bfc70fc, quay_size_1a60c66):
-        if quay_physical_addr_fd660fd % _name_boundary.attributes(quay_self_62930ae)['page_size'] != 0 or quay_virtual_addr_bfc70fc % _name_boundary.attributes(quay_self_62930ae)['page_size'] != 0 or quay_size_1a60c66 % _name_boundary.attributes(quay_self_62930ae)['page_size'] != 0:
-            raise quay_MachOAlignmentError(f'Tried to map {hex(quay_virtual_addr_bfc70fc)}+{hex(quay_size_1a60c66)} to {hex(quay_physical_addr_fd660fd)}')
-        for quay_i_1e6917f in range(quay_size_1a60c66 // _name_boundary.attributes(quay_self_62930ae)['page_size']):
-            _name_boundary.attributes(quay_self_62930ae)['page_table'][quay_virtual_addr_bfc70fc + quay_i_1e6917f * _name_boundary.attributes(quay_self_62930ae)['page_size'] >> _name_boundary.attributes(quay_self_62930ae)['page_size_bits']] = quay_physical_addr_fd660fd + quay_i_1e6917f * _name_boundary.attributes(quay_self_62930ae)['page_size']
-        quay_seg_86987b9 = quay__fakeseg(vm_address=quay_virtual_addr_bfc70fc, file_address=quay_physical_addr_fd660fd, size=quay_size_1a60c66)
-        _name_boundary.attributes(quay_self_62930ae)['segs'][quay_virtual_addr_bfc70fc] = [quay_physical_addr_fd660fd, quay_size_1a60c66]
-        _name_boundary.attributes(_name_boundary.attributes(quay_self_62930ae)['fallback'])['add_segment'](quay_seg_86987b9)
 quay_vm_obj = _name_boundary.named_record('vm_obj', ['vmaddr', 'vmend', 'size', 'fileaddr'])
 
-@_name_boundary.class_contract('MisalignedVM', {'vm_check': 'quay_vm_check', 'translate': 'quay_translate', 'de_translate': 'quay_de_translate', 'add_segment': 'quay_add_segment', 'detag_kern_64': 'quay_detag_kern_64', 'detag_64': 'quay_detag_64', 'fallback': 'quay_fallback', 'segs': 'quay_segs', 'map': 'quay_map', 'stats': 'quay_stats', 'vm_base_addr': 'quay_vm_base_addr', 'sorted_map': 'quay_sorted_map', 'cache': 'quay_cache'})
-class quay_MisalignedVM:
-    """
-    This is the manual backup if the image can't be mapped to 16/4k segments
-    """
 
-    @_name_boundary.callable_contract({'self': 'quay_self_8d87287'}, '__init__')
-    def __init__(quay_self_8d87287):
-        _name_boundary.attributes(quay_self_8d87287)['detag_kern_64'] = False
-        _name_boundary.attributes(quay_self_8d87287)['detag_64'] = False
-        _name_boundary.attributes(quay_self_8d87287)['fallback'] = None
-        _name_boundary.attributes(quay_self_8d87287)['segs'] = {}
-        _name_boundary.attributes(quay_self_8d87287)['map'] = {}
-        _name_boundary.attributes(quay_self_8d87287)['stats'] = {}
-        _name_boundary.attributes(quay_self_8d87287)['vm_base_addr'] = 0
-        _name_boundary.attributes(quay_self_8d87287)['sorted_map'] = {}
-        _name_boundary.attributes(quay_self_8d87287)['cache'] = {}
+@_name_boundary.class_contract('MisalignedVM', {'vm_check':'quay_vm_check', 'translate':'quay_translate', 'de_translate':'quay_de_translate', 'add_segment':'quay_add_segment', 'detag_kern_64':'quay_detag_kern_64', 'detag_64':'quay_detag_64', 'fallback':'quay_fallback', 'segs':'quay_segs', 'map':'quay_map', 'stats':'quay_stats', 'vm_base_addr':'quay_vm_base_addr', 'sorted_map':'quay_sorted_map', 'cache':'quay_cache'})
+class quay_MisalignedVM(_Ranges):
+    def __init__(self):
+        self.detag_kern_64 = self.detag_64 = False
+        self.fallback = None
+        self.segs, self.map, self.stats, self.sorted_map, self.cache = {}, {}, {}, {}, {}
+        self.vm_base_addr = 0
 
-    @_name_boundary.callable_contract({'self': 'quay_self_6a5e82d'}, '__str__')
-    def __str__(quay_self_6a5e82d):
-        quay_table_8fffb6b = quay_Table(dividers=True, avoid_wrapping_titles=True)
-        _name_boundary.attributes(quay_table_8fffb6b)['titles'] = ['VM Start', 'VM End', 'File Start', 'File End', 'Size']
-        _name_boundary.attributes(quay_table_8fffb6b)['size_pinned_columns'] = [0, 1]
-        for quay_vm_addr_81236f2 in _name_boundary.attributes(quay_self_6a5e82d)['segs'].keys():
-            _name_boundary.attributes(quay_table_8fffb6b)['rows'].append([hex(quay_vm_addr_81236f2), hex(quay_vm_addr_81236f2 + _name_boundary.attributes(quay_self_6a5e82d)['segs'][quay_vm_addr_81236f2][1]), hex(_name_boundary.attributes(quay_self_6a5e82d)['segs'][quay_vm_addr_81236f2][0]), hex(_name_boundary.attributes(quay_self_6a5e82d)['segs'][quay_vm_addr_81236f2][0] + _name_boundary.attributes(quay_self_6a5e82d)['segs'][quay_vm_addr_81236f2][1]), hex(_name_boundary.attributes(quay_self_6a5e82d)['segs'][quay_vm_addr_81236f2][1])])
-        return _name_boundary.attributes(quay_table_8fffb6b)['fetch_all'](quay_get_terminal_size().columns - 5)
+    def quay_add_segment(self, segment):
+        size = getattr(segment, 'file_size', segment.size)
+        self._add_range(segment.file_address, segment.vm_address, size)
+        self.map[segment.vm_address] = quay_vm_obj(segment.vm_address, segment.vm_address + size, size, segment.file_address)
+        if segment.file_address == 0 and size:
+            self.vm_base_addr = segment.vm_address
 
-    @_name_boundary.callable_contract({'self': 'quay_self_3adc694', 'vm_address': 'quay_vm_address_c65ab19'}, 'vm_check')
-    def quay_vm_check(quay_self_3adc694, quay_vm_address_c65ab19):
-        try:
-            _name_boundary.attributes(quay_self_3adc694)['translate'](quay_vm_address_c65ab19)
-            return True
-        except ValueError:
-            return False
 
-    @_name_boundary.callable_contract({'self': 'quay_self_195a9ac', 'vm_address': 'quay_vm_address_d4909df'}, 'translate')
-    def quay_translate(quay_self_195a9ac, quay_vm_address_d4909df: int) -> int:
-        if _name_boundary.attributes(quay_self_195a9ac)['detag_kern_64']:
-            quay_vm_address_d4909df = quay_vm_address_d4909df | 65535 << 12 * 4
-        if _name_boundary.attributes(quay_self_195a9ac)['detag_64']:
-            quay_vm_address_d4909df = quay_vm_address_d4909df & 68719476735
-        if quay_vm_address_d4909df in _name_boundary.attributes(quay_self_195a9ac)['cache']:
-            return _name_boundary.attributes(quay_self_195a9ac)['cache'][quay_vm_address_d4909df]
-        for quay_o_7adab52 in _name_boundary.attributes(quay_self_195a9ac)['map'].values():
-            if quay_vm_address_d4909df >= _name_boundary.attributes(quay_o_7adab52)['vmaddr'] and quay_o_7adab52.vmend >= quay_vm_address_d4909df:
-                quay_file_addr_bd5d2f8 = quay_o_7adab52.fileaddr + quay_vm_address_d4909df - _name_boundary.attributes(quay_o_7adab52)['vmaddr']
-                _name_boundary.attributes(quay_self_195a9ac)['cache'][quay_vm_address_d4909df] = quay_file_addr_bd5d2f8
-                return quay_file_addr_bd5d2f8
-        if _name_boundary.attributes(quay_self_195a9ac)['fallback']:
-            return _name_boundary.attributes(_name_boundary.attributes(quay_self_195a9ac)['fallback'])['translate'](quay_vm_address_d4909df)
-        raise quay_VMAddressingError(f"Address {hex(quay_vm_address_d4909df)} couldn't be found in vm address set")
+@_name_boundary.class_contract('VM', {'vm_check':'quay_vm_check', 'add_segment':'quay_add_segment', 'translate':'quay_translate', 'de_translate':'quay_de_translate', 'map_pages':'quay_map_pages', 'page_size':'quay_page_size', 'page_size_bits':'quay_page_size_bits', 'page_table':'quay_page_table', 'tlb':'quay_tlb', 'segs':'quay_segs', 'vm_base_addr':'quay_vm_base_addr', 'dirty':'quay_dirty', 'fallback':'quay_fallback', 'detag_kern_64':'quay_detag_kern_64', 'detag_64':'quay_detag_64'})
+class quay_VM(_Ranges):
+    def __init__(self, page_size):
+        if type(page_size) is not int or page_size <= 0 or page_size & (page_size - 1):
+            raise ValueError('page_size must be a positive power of two')
+        self.page_size, self.page_size_bits = page_size, page_size.bit_length() - 1
+        self.page_table, self.tlb, self.segs, self.cache = {}, {}, {}, {}
+        self.vm_base_addr, self.dirty = None, False
+        self.fallback = quay_MisalignedVM()
+        self.detag_kern_64 = self.detag_64 = False
 
-    @_name_boundary.callable_contract({'self': 'quay_self_80fa6ad', 'file_address': 'quay_file_address_841ccc9'}, 'de_translate')
-    def quay_de_translate(quay_self_80fa6ad, quay_file_address_841ccc9):
-        """
-        This method is slow, and should only be used for introspection, and not things that need to be fast.
+    def quay_add_segment(self, segment):
+        if segment.name == '__PAGEZERO':
+            return
+        size = getattr(segment, 'file_size', segment.size)
+        if self.vm_base_addr is None:
+            self.vm_base_addr = segment.vm_address
+        # File-backed final partial pages are valid; virtual zero-fill is excluded.
+        self._add_range(segment.file_address, segment.vm_address, size)
+        self.fallback.quay_add_segment(quay__fakeseg(segment.vm_address, segment.file_address, size))
 
-        :param file_address:
-        :return:
-        """
-        for quay_o_1c6fc2c in _name_boundary.attributes(quay_self_80fa6ad)['map'].values():
-            quay_file_start_cd188e6 = quay_o_1c6fc2c.fileaddr
-            quay_file_end_163a469 = quay_o_1c6fc2c.fileaddr + _name_boundary.attributes(quay_o_1c6fc2c)['size']
-            if quay_file_start_cd188e6 <= quay_file_address_841ccc9 <= quay_file_end_163a469:
-                return _name_boundary.attributes(quay_o_1c6fc2c)['vmaddr'] + (quay_file_address_841ccc9 - quay_file_start_cd188e6)
-        _name_boundary.attributes(quay_log)['debug'](f'\n\n{str(quay_self_80fa6ad)}\n\n')
-        raise quay_VMAddressingError(f'Could not de_translate address {quay_file_address_841ccc9}')
-
-    @_name_boundary.callable_contract({'self': 'quay_self_04739fc', 'segment': 'quay_segment_e96118c'}, 'add_segment')
-    def quay_add_segment(quay_self_04739fc, quay_segment_e96118c: quay_Union[quay_Segment, quay__fakeseg]):
-        if _name_boundary.attributes(quay_segment_e96118c)['file_address'] == 0 and _name_boundary.attributes(quay_segment_e96118c)['size'] != 0:
-            _name_boundary.attributes(quay_self_04739fc)['vm_base_addr'] = _name_boundary.attributes(quay_segment_e96118c)['vm_address']
-        quay_seg_obj_eb7cdf4 = quay_vm_obj(_name_boundary.attributes(quay_segment_e96118c)['vm_address'], _name_boundary.attributes(quay_segment_e96118c)['vm_address'] + _name_boundary.attributes(quay_segment_e96118c)['size'], _name_boundary.attributes(quay_segment_e96118c)['size'], _name_boundary.attributes(quay_segment_e96118c)['file_address'])
-        _name_boundary.attributes(quay_log)['info'](str(quay_seg_obj_eb7cdf4))
-        _name_boundary.attributes(quay_self_04739fc)['map'][_name_boundary.attributes(quay_segment_e96118c)['vm_address']] = quay_seg_obj_eb7cdf4
-        _name_boundary.attributes(quay_self_04739fc)['segs'][_name_boundary.attributes(quay_segment_e96118c)['vm_address']] = [_name_boundary.attributes(quay_segment_e96118c)['file_address'], _name_boundary.attributes(quay_segment_e96118c)['size']]
+    def quay_map_pages(self, physical_addr, virtual_addr, size):
+        if any(type(value) is not int or value < 0 for value in (physical_addr, virtual_addr, size)):
+            raise quay_MachOAlignmentError('page map coordinates must be nonnegative integers')
+        if any(value % self.page_size for value in (physical_addr, virtual_addr, size)):
+            raise quay_MachOAlignmentError(f'Tried to map {virtual_addr:#x}+{size:#x} to {physical_addr:#x}')
+        self._add_range(physical_addr, virtual_addr, size)
+        self.fallback.quay_add_segment(quay__fakeseg(virtual_addr, physical_addr, size))
 
 @_name_boundary.class_contract('LinkedImage', {'serialize': 'quay_serialize', '_get_name': 'quay__get_name', 'cmd': 'quay_cmd', 'source_image': 'quay_source_image', 'install_name': 'quay_install_name', 'weak': 'quay_weak', 'local': 'quay_local'})
 class quay_LinkedImage:
@@ -196,10 +133,12 @@ class quay_LinkedImage:
     def quay_serialize(quay_self_5e279c3):
         return {'install_name': _name_boundary.attributes(quay_self_5e279c3)['install_name'], 'load_command': _name_boundary.attributes(quay_LOAD_COMMAND(_name_boundary.attributes(_name_boundary.attributes(quay_self_5e279c3)['cmd'])['cmd']))['name']}
 
-    @_name_boundary.callable_contract({'self': 'quay_self_2060245', 'cmd': 'quay_cmd_b02d2fa'}, '_get_name')
-    def quay__get_name(quay_self_2060245, quay_cmd_b02d2fa) -> str:
-        quay_read_address_8d17c11 = _name_boundary.attributes(quay_cmd_b02d2fa)['off'] + _name_boundary.attributes(quay_dylib_command)['size']()
-        return _name_boundary.attributes(_name_boundary.attributes(quay_self_2060245)['source_image'])['read_cstr'](quay_read_address_8d17c11)
+    def quay__get_name(self, cmd):
+        relative = cmd.dylib.name
+        if relative < quay_dylib_command.size() or relative >= cmd.cmdsize:
+            from imagequay.failure_types import quay_MalformedMachOException
+            raise quay_MalformedMachOException('dylib name is outside its load command')
+        return self.source_image.read_cstr(cmd.off + relative, limit=cmd.cmdsize - relative)
 
 @_name_boundary.class_contract('Image', {'serialize': 'quay_serialize', 'vm_realign': 'quay_vm_realign', 'vm_check': 'quay_vm_check', 'read_uint': 'quay_read_uint', 'read_ptr': 'quay_read_ptr', 'read_int': 'quay_read_int', 'read_bytearray': 'quay_read_bytearray', 'read_struct': 'quay_read_struct', 'read_fixed_len_str': 'quay_read_fixed_len_str', 'read_cstr': 'quay_read_cstr', 'read_uleb128': 'quay_read_uleb128', 'slice': 'quay_slice', 'vm': 'quay_vm', 'base_name': 'quay_base_name', 'install_name': 'quay_install_name', 'linked_images': 'quay_linked_images', 'segments': 'quay_segments', 'info': 'quay_info', 'dylib': 'quay_dylib', 'uuid': 'quay_uuid', 'codesign_info': 'quay_codesign_info', '_codesign_cmd': 'quay__codesign_cmd', 'platform': 'quay_platform', 'allowed_clients': 'quay_allowed_clients', 'rpath': 'quay_rpath', 'minos': 'quay_minos', 'sdk_version': 'quay_sdk_version', 'imports': 'quay_imports', 'exports': 'quay_exports', 'symbols': 'quay_symbols', 'import_table': 'quay_import_table', 'export_table': 'quay_export_table', 'entry_point': 'quay_entry_point', 'function_starts': 'quay_function_starts', 'thread_state': 'quay_thread_state', '_entry_off': 'quay__entry_off', 'binding_table': 'quay_binding_table', 'weak_binding_table': 'quay_weak_binding_table', 'lazy_binding_table': 'quay_lazy_binding_table', 'export_trie': 'quay_export_trie', 'chained_fixups': 'quay_chained_fixups', 'symbol_table': 'quay_symbol_table', 'struct_cache': 'quay_struct_cache', 'macho_header': 'quay_macho_header', 'ptr_size': 'quay_ptr_size'})
 class quay_Image:
@@ -401,26 +340,13 @@ class quay_Image:
             quay_offset_fe692ef = _name_boundary.attributes(_name_boundary.attributes(quay_self_d3cf1be)['vm'])['translate'](quay_offset_fe692ef)
         return _name_boundary.attributes(_name_boundary.attributes(quay_self_d3cf1be)['slice'])['read_bytearray'](quay_offset_fe692ef, quay_length_01b57fa)
 
-    @_name_boundary.callable_contract({'self': 'quay_self_3143ed1', 'address': 'quay_address_5a02a6c', 'struct_type': 'quay_struct_type_6fb0ea9', 'vm': 'quay_vm_fbe984a', 'endian': 'quay_endian_cf5d0cd', 'force_reload': 'quay_force_reload_3d75cd8'}, 'read_struct')
-    def quay_read_struct(quay_self_3143ed1, quay_address_5a02a6c: int, quay_struct_type_6fb0ea9, quay_vm_fbe984a=False, quay_endian_cf5d0cd='little', quay_force_reload_3d75cd8=False):
-        """
-        Load a struct (struct_type_t) from a location and return the processed object
-
-        :param address: Address to load struct from
-        :param struct_type: type of struct (e.g. dyld_header)
-        :param vm:  Is `address` a VM address?
-        :param endian: Endianness of bytes to read.
-        :param force_reload: We cache structs to avoid struct unpacking repeatedly. If you for some reason need to force
-            a reload, set this to true
-        :return: Loaded struct
-        """
-        if quay_address_5a02a6c not in _name_boundary.attributes(quay_self_3143ed1)['struct_cache'] or quay_force_reload_3d75cd8:
-            if quay_vm_fbe984a:
-                quay_address_5a02a6c = _name_boundary.attributes(_name_boundary.attributes(quay_self_3143ed1)['vm'])['translate'](quay_address_5a02a6c)
-            quay_struct_6079ef0 = _name_boundary.attributes(_name_boundary.attributes(quay_self_3143ed1)['slice'])['read_struct'](quay_address_5a02a6c, quay_struct_type_6fb0ea9, quay_endian_cf5d0cd)
-            _name_boundary.attributes(quay_self_3143ed1)['struct_cache'][quay_address_5a02a6c] = quay_struct_6079ef0
-            return quay_struct_6079ef0
-        return _name_boundary.attributes(quay_self_3143ed1)['struct_cache'][quay_address_5a02a6c]
+    def quay_read_struct(self, address, struct_type, vm=False, endian=None, force_reload=False):
+        physical = self.vm.translate(address) if vm else address
+        order = endian or self.slice.byte_order
+        key = (physical, struct_type, order, self.ptr_size, self.slice.file._generation)
+        if force_reload or key not in self.struct_cache:
+            self.struct_cache[key] = self.slice.read_struct(physical, struct_type, order)
+        return self.struct_cache[key]
 
     @_name_boundary.callable_contract({'self': 'quay_self_bf4acac', 'address': 'quay_address_4c02936', 'count': 'quay_count_286e367', 'vm': 'quay_vm_085f2ed', 'force': 'quay_force_9517485'}, 'read_fixed_len_str')
     def quay_read_fixed_len_str(quay_self_bf4acac, quay_address_4c02936: int, quay_count_286e367: int, quay_vm_085f2ed=False, quay_force_9517485=False):

@@ -94,44 +94,52 @@ def quay_load_image(quay_fp_6adef83: quay_Union[quay_BinaryIO, quay_MachOFile, q
         quay_macho_slice_a717b5e: quay_Slice = _name_boundary.attributes(quay_macho_file_2e42168)['slices'][quay_slice_index_2c22772]
     return _name_boundary.attributes(quay_MachOImageLoader)['load'](quay_macho_slice_a717b5e, load_symtab=quay_load_symtab_b46c033, load_imports=quay_load_imports_e393e5b, load_exports=quay_load_exports_4f7c9d8, force_misaligned_vm=quay_force_misaligned_vm_2554441)
 
-@_name_boundary.callable_contract({'fp': 'quay_fp_1a66146'}, 'macho_verify')
-def quay_macho_verify(quay_fp_1a66146: quay_Union[quay_BinaryIO, quay_MachOFile, quay_Slice, quay_Image]) -> None:
-    """
-    This function takes a variety of MachO-based objects, and loads them with malformation exceptions fully enabled.
-
-    This can be used to verify patch code did not damage or improperly modify a MachO.
-
-    :param fp: One of: BinaryIO, MachOFile, Slice, or Image, to load and verify
-    :return:
-    :raises: MalformedMachOException
-    """
-    quay_should_ignore_65db77c = _name_boundary.attributes(quay_ignore)['MALFORMED']
-    _name_boundary.attributes(quay_log)['info']('Verifying MachO Integrity')
-    _name_boundary.attributes(quay_ignore)['MALFORMED'] = False
-    if isinstance(quay_fp_1a66146, quay_Image):
-        quay_load_image(_name_boundary.attributes(quay_fp_1a66146)['slice'])
-    elif isinstance(quay_fp_1a66146, quay_MachOFile) or isinstance(quay_fp_1a66146, quay_BinaryIO):
-        if isinstance(quay_fp_1a66146, quay_MachOFile):
-            quay_slices_f370558 = _name_boundary.attributes(quay_fp_1a66146)['slices']
+def quay_macho_verify(fp):
+    """Check all selected slices structurally, restoring caller state on errors."""
+    previous = quay_ignore.MALFORMED
+    quay_ignore.MALFORMED = False
+    try:
+        if isinstance(fp, quay_Image):
+            quay_load_image(fp.slice)
+        elif isinstance(fp, quay_Slice):
+            quay_load_image(fp)
         else:
-            quay_slices_f370558 = quay_load_macho_file(quay_fp_1a66146)
-        for quay_macho_slice_a5c9e25 in quay_slices_f370558:
-            quay_load_image(quay_macho_slice_a5c9e25)
-    else:
-        quay_load_image(quay_fp_1a66146)
-    _name_boundary.attributes(quay_ignore)['MALFORMED'] = quay_should_ignore_65db77c
+            owner = fp if isinstance(fp, quay_MachOFile) else quay_load_macho_file(fp)
+            for view in owner.slices:
+                quay_load_image(view)
+    finally:
+        quay_ignore.MALFORMED = previous
+
+
+def patch_image_header(image, header):
+    """Patch a header only if declared file payload cannot be overwritten."""
+    from imagequay.failure_types import quay_MalformedMachOException
+    old_end = len(image.macho_header.raw)
+    new_end = len(header.raw)
+    if new_end > old_end:
+        boundaries = []
+        for segment in image.segments.values():
+            if segment.file_address >= old_end and segment.file_size:
+                boundaries.append(segment.file_address)
+            for section in segment.sections.values():
+                if section.cmd.flags & 0xff not in (1, 12, 18) and section.size and section.file_address >= old_end:
+                    boundaries.append(section.file_address)
+        if not boundaries or new_end > min(boundaries):
+            raise quay_MalformedMachOException('edited header exceeds available declared header padding')
+    image.slice.patch(0, header.raw)
+    if new_end < old_end:
+        image.slice.patch(new_end, b'\x00' * (old_end - new_end))
+    return quay_reload_image(image)
 
 @_name_boundary.callable_contract({'image': 'quay_image_d0cff52'}, 'load_objc_metadata')
 def quay_load_objc_metadata(quay_image_d0cff52: quay_Image) -> quay_ObjCImage:
-    if _name_boundary.attributes(quay_image_d0cff52)['chained_fixups'] is not None:
-        quay_data_io_2251f88 = quay_BytesIO()
-        _name_boundary.attributes(quay_data_io_2251f88)['write'](_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_image_d0cff52)['slice'])['file'])['read_bytes'](0, _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_image_d0cff52)['slice'])['file'])['size']))
-        quay_data_io_2251f88.seek(0)
-        for quay_rebase_a01254f in _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_image_d0cff52)['chained_fixups'])['rebases'])['items']():
-            quay_data_io_2251f88.seek(_name_boundary.attributes(_name_boundary.attributes(quay_image_d0cff52)['vm'])['translate'](quay_rebase_a01254f[0]))
-            _name_boundary.attributes(quay_data_io_2251f88)['write'](quay_rebase_a01254f[1].to_bytes(8, 'little'))
-        quay_data_io_2251f88.seek(0)
-        quay_image_d0cff52 = quay_load_image(quay_data_io_2251f88)
+    if quay_image_d0cff52.chained_fixups is not None:
+        from imagequay.container_io import quay_BackingFile
+        backing = quay_BackingFile(quay_BytesIO(quay_image_d0cff52.slice.full_bytes_for_slice()))
+        for virtual, target in quay_image_d0cff52.chained_fixups.rebases.items():
+            physical = quay_image_d0cff52.vm.translate(virtual)
+            backing.write(physical, target.to_bytes(8, 'little'))
+        quay_image_d0cff52 = quay_load_image(quay_BytesIO(bytes(backing.file)))
     return _name_boundary.attributes(quay_ObjCImage)['from_image'](quay_image_d0cff52)
 
 @_name_boundary.callable_contract({'objc_image': 'quay_objc_image_d414ff3'}, 'load_swift_metadata')

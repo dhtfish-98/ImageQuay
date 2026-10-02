@@ -79,70 +79,51 @@ class quay_TBDGenerator:
         return quay_tbd_c82693e
 quay_fat_arch_for_slice = _name_boundary.named_record('fat_arch_for_slice', ['slice', 'cpu_type', 'cpu_subtype', 'offset', 'size', 'align'])
 
-@_name_boundary.class_contract('FatMachOGenerator', {'_fat_arch_for_slice': 'quay__fat_arch_for_slice', 'slices': 'quay_slices', 'fat_archs': 'quay_fat_archs', 'fat_head': 'quay_fat_head'})
+@_name_boundary.class_contract('FatMachOGenerator', {'_fat_arch_for_slice':'quay__fat_arch_for_slice', 'slices':'quay_slices', 'fat_archs':'quay_fat_archs', 'fat_head':'quay_fat_head'})
 class quay_FatMachOGenerator:
-    """
-
-    """
-
-    @_name_boundary.callable_contract({'self': 'quay_self_fc5a100', 'slices': 'quay_slices_dc083b8'}, '__init__')
-    def __init__(quay_self_fc5a100, quay_slices_dc083b8):
-        _name_boundary.attributes(quay_self_fc5a100)['slices'] = quay_slices_dc083b8
-        _name_boundary.attributes(quay_self_fc5a100)['fat_archs'] = []
-        quay_pfa_4b192c3 = None
-        for quay_fat_slice_c3ba167 in quay_slices_dc083b8:
-            quay_fat_arch_item_12c8fe5 = _name_boundary.attributes(quay_self_fc5a100)['_fat_arch_for_slice'](quay_fat_slice_c3ba167, quay_pfa_4b192c3)
-            quay_pfa_4b192c3 = quay_fat_arch_item_12c8fe5
-            _name_boundary.attributes(quay_self_fc5a100)['fat_archs'].append(quay_fat_arch_item_12c8fe5)
-        quay_fat_head_4af1920 = bytearray()
-        quay_fh_d834bb9 = _name_boundary.attributes(quay_Struct)['create_with_values'](quay_fat_header, [b'\xca\xfe\xba\xbe', len(_name_boundary.attributes(quay_self_fc5a100)['fat_archs'])], 'big')
-        quay_fat_head_4af1920 += _name_boundary.attributes(quay_fh_d834bb9)['raw']
-        for quay_fat_arch_item_12c8fe5 in _name_boundary.attributes(quay_self_fc5a100)['fat_archs']:
-            quay_fa_cddcb14 = _name_boundary.attributes(quay_Struct)['create_with_values'](quay_fat_arch, [_name_boundary.attributes(quay_fat_arch_item_12c8fe5)['cpu_type'], _name_boundary.attributes(quay_fat_arch_item_12c8fe5)['cpu_subtype'], _name_boundary.attributes(quay_fat_arch_item_12c8fe5)['offset'], _name_boundary.attributes(quay_fat_arch_item_12c8fe5)['size'], _name_boundary.attributes(quay_fat_arch_item_12c8fe5)['align']], 'big')
-            quay_fat_head_4af1920 += _name_boundary.attributes(quay_fa_cddcb14)['raw']
-        _name_boundary.attributes(quay_self_fc5a100)['fat_head'] = quay_fat_head_4af1920
+    """Plan finite, nonoverlapping FAT32 output without loading dyld/ObjC metadata."""
+    def __init__(self, slices):
+        from imagequay.container_io import MAX_INPUT_BYTES, MAX_ARCHITECTURES
+        from imagequay.failure_types import quay_MalformedMachOException
+        self.slices = list(slices)
+        if not 1 <= len(self.slices) <= MAX_ARCHITECTURES:
+            raise quay_MalformedMachOException('combine needs between 1 and 4096 slices')
+        table_size = quay_fat_header.size() + len(self.slices) * quay_fat_arch.size()
+        cursor, identities = table_size, set()
+        self.fat_archs = []
+        for value in self.slices:
+            record = self.quay__fat_arch_for_slice(value, self.fat_archs[-1] if self.fat_archs else None)
+            alignment = 1 << record.align
+            offset = (cursor + alignment - 1) // alignment * alignment
+            identity = (record.cpu_type, record.cpu_subtype)
+            if identity in identities:
+                raise quay_MalformedMachOException('combine contains a duplicate architecture identity')
+            identities.add(identity)
+            if offset > MAX_INPUT_BYTES or record.size > MAX_INPUT_BYTES - offset:
+                raise quay_MalformedMachOException('combined container exceeds the 1 GiB budget')
+            record = quay_fat_arch_for_slice(value, record.cpu_type, record.cpu_subtype, offset, record.size, record.align)
+            self.fat_archs.append(record)
+            cursor = offset + record.size
+        self.fat_head = bytearray(quay_Struct.create_with_values(quay_fat_header, [b'\xca\xfe\xba\xbe', len(self.fat_archs)], 'big').raw)
+        for record in self.fat_archs:
+            self.fat_head.extend(quay_Struct.create_with_values(quay_fat_arch, [record.cpu_type, record.cpu_subtype, record.offset, record.size, record.align], 'big').raw)
 
     @staticmethod
-    @_name_boundary.callable_contract({'fat_slice': 'quay_fat_slice_2c10be2', 'previous_fat_arch': 'quay_previous_fat_arch_67a42c7'}, '_fat_arch_for_slice')
-    def quay__fat_arch_for_slice(quay_fat_slice_2c10be2: quay_Slice, quay_previous_fat_arch_67a42c7: quay_fat_arch_for_slice) -> quay_fat_arch_for_slice:
-        """
-        :param fat_slice: Fat slice
-        :type fat_slice: Slice
-        :param previous_fat_arch: Previous item returned by this func, or None if first.
-        :type previous_fat_arch: fat_arch_for_slice
-        :return: fat_arch_for_slice item.
-        :rtype: fat_arch_for_slice
-        """
-        quay_lib_a426049 = _name_boundary.attributes(quay_MachOImageLoader)['load'](quay_fat_slice_2c10be2)
-        quay_cpu_type_8ef5b30 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_lib_a426049)['macho_header'])['dyld_header'])['cpu_type']
-        quay_cpu_subtype_982bd50 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_lib_a426049)['macho_header'])['dyld_header'])['cpu_subtype']
-        if len(_name_boundary.attributes(_name_boundary.attributes(quay_fat_slice_2c10be2)['macho_file'])['slices']) > 1:
-            quay_size_b85527b = _name_boundary.attributes(_name_boundary.attributes(quay_fat_slice_2c10be2)['arch_struct'])['size']
-            quay_align_c20f8a6 = pow(2, _name_boundary.attributes(_name_boundary.attributes(quay_fat_slice_2c10be2)['arch_struct'])['align'])
-            quay_align_directive_853b578 = _name_boundary.attributes(_name_boundary.attributes(quay_fat_slice_2c10be2)['arch_struct'])['align']
+    def quay__fat_arch_for_slice(fat_slice, previous_fat_arch=None):
+        from imagequay.container_io import quay_MachOImageHeader, MAX_INPUT_BYTES
+        from imagequay.failure_types import quay_MalformedMachOException
+        header = quay_MachOImageHeader.from_image(fat_slice).dyld_header
+        if fat_slice.arch_struct and len(fat_slice.macho_file.slices) > 1:
+            directive = fat_slice.arch_struct.align
         else:
-            quay_f_3b19b39 = _name_boundary.attributes(_name_boundary.attributes(quay_fat_slice_2c10be2)['macho_file'])['file_object']
-            quay_old_file_position_5d3ca6d = quay_f_3b19b39.tell()
-            quay_f_3b19b39.seek(0, quay_os.SEEK_END)
-            quay_size_b85527b = quay_f_3b19b39.tell()
-            quay_f_3b19b39.seek(quay_old_file_position_5d3ca6d, quay_os.SEEK_SET)
-            if quay_cpu_type_8ef5b30 == 16777228:
-                quay_align_c20f8a6 = pow(2, 14)
-                quay_align_directive_853b578 = 14
-            elif quay_cpu_type_8ef5b30 == 16777223:
-                quay_align_c20f8a6 = pow(2, 12)
-                quay_align_directive_853b578 = 12
-            else:
-                print(quay_cpu_type_8ef5b30)
-                raise AssertionError('not yet implemented')
-        if quay_previous_fat_arch_67a42c7 is None:
-            quay_offset_079c0f8 = quay_align_c20f8a6
-        else:
-            quay_offset_079c0f8 = 0
-            while True:
-                quay_offset_079c0f8 += quay_align_c20f8a6
-                if quay_offset_079c0f8 > _name_boundary.attributes(quay_previous_fat_arch_67a42c7)['offset'] + _name_boundary.attributes(quay_previous_fat_arch_67a42c7)['size']:
-                    break
-        _name_boundary.attributes(quay_log)['debug'](f'Create arch with offset {hex(quay_offset_079c0f8)} and size {hex(quay_size_b85527b)}')
-        return quay_fat_arch_for_slice(quay_fat_slice_2c10be2, quay_cpu_type_8ef5b30, quay_cpu_subtype_982bd50, quay_offset_079c0f8, quay_size_b85527b, quay_align_directive_853b578)
+            directive = 14 if header.cpu_type == 0x0100000c else 12
+        if not 0 <= directive <= 30:
+            raise quay_MalformedMachOException('fat alignment exponent exceeds its supported width')
+        alignment = 1 << directive
+        cursor = previous_fat_arch.offset + previous_fat_arch.size if previous_fat_arch else alignment
+        offset = (cursor + alignment - 1) // alignment * alignment
+        if fat_slice.size > MAX_INPUT_BYTES - offset:
+            raise quay_MalformedMachOException('combined container exceeds the 1 GiB budget')
+        return quay_fat_arch_for_slice(fat_slice, header.cpu_type, header.cpu_subtype, offset, fat_slice.size, directive)
+
 _name_boundary.module_contract(globals(), {'os': 'quay_os', 'fat_arch_for_slice': 'quay_fat_arch_for_slice', 'Image': 'quay_Image', 'TBDGenerator': 'quay_TBDGenerator', 'MachOImageLoader': 'quay_MachOImageLoader', 'Slice': 'quay_Slice', 'namedtuple': 'quay_namedtuple', 'SymbolType': 'quay_SymbolType', 'FatMachOGenerator': 'quay_FatMachOGenerator', 'log': 'quay_log', 'ObjCImage': 'quay_ObjCImage'})

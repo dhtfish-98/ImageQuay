@@ -34,3 +34,32 @@ else:
     assert mosaic_Filters.mosaic_filters
     assert mosaic_SandboxString().mosaic_parse_byte_string(b'\x40a\x0a',[])==['a']
 print(consumer_project+' installed consumer PASS')
+if consumer_project=='ImageQuay':
+    import importlib.metadata
+    import tempfile
+    import stat
+    from imagequay.container_io import quay_MachOFile,quay_MachOImageHeader
+    from imagequay.metadata_reader import quay_ExportTrie
+    from imagequay.failure_types import quay_MalformedMachOException
+    from imagequay.file_ops import safe_open
+    from types import SimpleNamespace
+    assert importlib.metadata.version('imagequay')=='1.0.2'
+    header=consumer_struct.pack('<8I',0xfeedfacf,0x01000007,3,2,0,0,0,0)
+    owner=quay_MachOFile(consumer_io.BytesIO(header+b'\x04\x00\xc0\x90\x01\x00'))
+    view=owner.slices[0]
+    parsed=quay_MachOImageHeader.from_image(view)
+    assert parsed.is64 and parsed.dyld_header.loadcnt==0
+    minimal=SimpleNamespace(slice=view,read_bytearray=view.read_bytearray)
+    assert quay_ExportTrie.from_image(minimal,32,6).symbols[0].address==18496
+    try:view.read_bytearray(-1,1)
+    except quay_MalformedMachOException:pass
+    else:raise AssertionError('installed range checking is absent')
+    with tempfile.TemporaryDirectory(prefix='imagequay-consumer-') as folder:
+        destination=ConsumerPath(folder)/'private-output'
+        with safe_open(destination,'wb') as stream:stream.write(b'owned')
+        assert destination.read_bytes()==b'owned'
+        assert stat.S_IMODE(destination.stat().st_mode)==0o600
+        try:safe_open(destination,'wb')
+        except FileExistsError:pass
+        else:raise AssertionError('installed output protection is absent')
+    print('ImageQuay 1.0.2 installed snapshot/export/private-output PASS')

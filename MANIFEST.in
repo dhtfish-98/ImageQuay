@@ -10,3 +10,6 @@ include THIRD_PARTY_NOTICES.md
 include .gitignore
 
 
+
+include DEFENSIVE_SCOPE.md
+recursive-include checks *.json

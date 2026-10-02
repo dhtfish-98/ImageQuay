@@ -27,6 +27,7 @@
 #
 # # # # #
 import imagequay_boundary as _name_boundary
+from imagequay.file_ops import safe_open as open
 import curses as quay_curses
 import os as quay_os
 import pprint as quay_pprint
