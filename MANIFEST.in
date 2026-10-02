@@ -13,3 +13,4 @@ include .gitignore
 
 include DEFENSIVE_SCOPE.md
 recursive-include checks *.json
+recursive-include checks/sources *.m *.swift

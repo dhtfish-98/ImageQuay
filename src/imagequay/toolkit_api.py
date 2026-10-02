@@ -133,13 +133,6 @@ def patch_image_header(image, header):
 
 @_name_boundary.callable_contract({'image': 'quay_image_d0cff52'}, 'load_objc_metadata')
 def quay_load_objc_metadata(quay_image_d0cff52: quay_Image) -> quay_ObjCImage:
-    if quay_image_d0cff52.chained_fixups is not None:
-        from imagequay.container_io import quay_BackingFile
-        backing = quay_BackingFile(quay_BytesIO(quay_image_d0cff52.slice.full_bytes_for_slice()))
-        for virtual, target in quay_image_d0cff52.chained_fixups.rebases.items():
-            physical = quay_image_d0cff52.vm.translate(virtual)
-            backing.write(physical, target.to_bytes(8, 'little'))
-        quay_image_d0cff52 = quay_load_image(quay_BytesIO(bytes(backing.file)))
     return _name_boundary.attributes(quay_ObjCImage)['from_image'](quay_image_d0cff52)
 
 @_name_boundary.callable_contract({'objc_image': 'quay_objc_image_d414ff3'}, 'load_swift_metadata')

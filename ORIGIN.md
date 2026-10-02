@@ -18,3 +18,7 @@ The container/byte layer and signature reader were substantively rewritten, with
 ## 1.0.3 record and metadata rewrite
 
 The record and plist engines were replaced with new finite layout/XML/object-graph architectures. New binding and chained-fixup modules separate declared metadata, pointer locations and unresolved external targets; loader dependency registration and symbol-string regions were rewritten. Maintained Python plistlib writes validated finite graphs; the retained CPython license and upstream copyrights remain included. Normal capabilities and independent Apple/stdlib evidence are recorded in VALIDATION.md. ObjC/Swift, UI, document rendering and remaining support algorithms remain inherited and OPEN. This is Codex-assisted maintenance of an attributed derivative, not evidence of independent authorship or CVP approval.
+
+## 1.0.4 language metadata rewrite
+
+Objective-C type grammar/model/graph and Swift static nominal/field readers were replaced with finite snapshot-scoped algorithms. The graph interprets chained pointers without patching caller data and never invokes metadata accessors or symbolic references. ABI record declarations, public API names and historical upstream provenance remain attributed. Compiler-owned static fixtures and Apple tools independently check normal behavior. Advanced shared-cache/runtime/generic/resilient layouts, full Swift demangling, header/TBD/UI/kernel/support algorithms remain OPEN. This is Codex-assisted maintenance of an attributed derivative, not independent authorship or CVP approval.

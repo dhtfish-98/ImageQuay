@@ -43,7 +43,7 @@ if consumer_project=='ImageQuay':
     from imagequay.failure_types import quay_MalformedMachOException
     from imagequay.file_ops import safe_open
     from types import SimpleNamespace
-    assert importlib.metadata.version('imagequay')=='1.0.3'
+    assert importlib.metadata.version('imagequay')=='1.0.4'
     header=consumer_struct.pack('<8I',0xfeedfacf,0x01000007,3,2,0,0,0,0)
     owner=quay_MachOFile(consumer_io.BytesIO(header+b'\x04\x00\xc0\x90\x01\x00'))
     view=owner.slices[0]
@@ -62,7 +62,7 @@ if consumer_project=='ImageQuay':
         try:safe_open(destination,'wb')
         except FileExistsError:pass
         else:raise AssertionError('installed output protection is absent')
-    print('ImageQuay 1.0.3 installed snapshot/export/private-output PASS')
+    print('ImageQuay 1.0.4 installed snapshot/export/private-output PASS')
 
     class InstalledSigned(quay_Struct):
         FIELDS={'signed':0x10004}
@@ -81,4 +81,27 @@ if consumer_project=='ImageQuay':
     from imagequay_layout.pointer_records import quay_dyld_chained_ptr_64_rebase
     consumer_bits=quay_Struct.create_with_bytes(quay_dyld_chained_ptr_64_rebase,(0x123456789).to_bytes(8,'little'))
     assert consumer_bits.target==0x123456789 and consumer_bits.raw==(0x123456789).to_bytes(8,'little')
-    print('ImageQuay 1.0.3 installed signed/nested/bitfield/plist policy PASS')
+    print('ImageQuay 1.0.4 installed signed/nested/bitfield/plist policy PASS')
+
+if consumer_project=='ImageQuay':
+    from imagequay.objc_model import quay_TypeProcessor,quay_Property
+    from imagequay.swift_model import quay_SwiftStruct,quay__FieldDescriptor,quay_Field
+    consumer_processor=quay_TypeProcessor()
+    assert consumer_processor.process('{Pair="items"[3i]}')[0].value.fields[0].declaration('items')=='int items[3]'
+    assert consumer_processor.process('jd')[0].declaration('value')=='_Complex double value'
+    assert quay_Property.from_values('title','T@"NSString",C,N').type=='NSString *'
+    consumer_field=quay_Field(2,'Si','value')
+    assert quay_SwiftStruct.from_values('Owned',quay__FieldDescriptor.from_values([consumer_field])).fields==[consumer_field]
+    consumer_fixture=ConsumerPath(__file__).resolve().parent/'bins'/'testbin1.fat'
+    with consumer_fixture.open('rb') as consumer_stream:consumer_owner=quay_MachOFile(consumer_stream)
+    consumer_count=0
+    for consumer_view in consumer_owner.slices:
+        consumer_source=consumer_view.full_bytes_for_slice()
+        consumer_image=consumer_module.load_image(consumer_view)
+        consumer_objc=consumer_module.load_objc_metadata(consumer_image)
+        assert consumer_objc.complete and not consumer_objc.errors
+        assert len(consumer_objc.classlist)==1 and len(consumer_objc.classlist[0].methods)==5
+        assert consumer_view.full_bytes_for_slice()==consumer_source
+        consumer_count+=1
+    assert consumer_count==3
+    print('ImageQuay 1.0.4 installed language grammar/Swift models/three immutable ObjC slices PASS')

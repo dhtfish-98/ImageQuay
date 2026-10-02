@@ -101,7 +101,7 @@ class quay_objc2_prop(quay_Struct):
 
 @_name_boundary.class_contract('objc2_prot_list', {'FIELDS': 'quay_FIELDS', 'cnt': 'quay_cnt'})
 class quay_objc2_prot_list(quay_Struct):
-    quay_FIELDS = {'cnt': quay_uint64_t}
+    quay_FIELDS = {'cnt': quay_uintptr_t}
 
     @_name_boundary.callable_contract({'self': 'quay_self_a3d4952', 'byte_order': 'quay_byte_order_4aeaf94'}, '__init__')
     def __init__(quay_self_a3d4952, quay_byte_order_4aeaf94='little'):

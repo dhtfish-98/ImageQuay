@@ -35,8 +35,8 @@ python checks/compare_upstream.py --upstream-root /path/to/pinned-upstream-check
 
 The source checkout is supplied explicitly; no developer machine paths are embedded. The public CI pins the original upstream commit and repeats tests, comparison, build and installed consumption.
 
-## Current defensive defaults (1.0.3)
+## Current defensive defaults (1.0.4)
 
 Inputs are finite private snapshots up to 1 GiB; shared reads check file ranges and the rewritten metadata services check their declared regions. Editing, combining and report generation write private atomic outputs; choose a new output path or explicitly add `--overwrite` before the subcommand. Ordinary commands run offline. `imagequay --check-updates -V` explicitly reads this repository's release metadata. `--mmap` remains accepted and uses snapshot I/O. `-f` does not bypass range checks.
 
-This release rewrites the container/signature/I/O/VM/export services plus record and plist cores, binding/threaded-bind interpretation, chained pointer metadata, symbol-table bounds and loader dependency order. External cache targets remain unresolved until the caller provides their bases; compressed chained symbols remain explicitly unsupported. Full ObjC/Swift, GUI, document/rendering/support algorithms and CPU/firmware interpretation still require work; see [VALIDATION.md](VALIDATION.md). It does not claim CVP eligibility or complete project rewriting.
+This release rewrites the container/signature/I/O/VM/export services plus record and plist cores, binding/threaded-bind interpretation, chained pointer metadata, symbol-table bounds and loader dependency order. External cache targets remain unresolved until the caller provides their bases; compressed chained symbols remain explicitly unsupported. Objective-C type/graph readers and Swift static nominal/field readers now use a finite immutable metadata view. Advanced ObjC shared-cache layouts, Swift generic/resilient tails and full demangling, GUI, header/TBD/rendering/support algorithms and CPU/firmware interpretation still require work; see [VALIDATION.md](VALIDATION.md). It does not claim CVP eligibility or complete project rewriting.

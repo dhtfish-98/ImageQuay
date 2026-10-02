@@ -32,13 +32,13 @@ class quay_EnumDescriptor(quay_Struct):
 class quay_StructDescriptor(quay_Struct):
     quay_FIELDS = {'Flags': quay_uint32_t, 'Parent': quay_int32_t, 'Name': quay_int32_t, 'AccessFunction': quay_int32_t, 'FieldDescriptor': quay_int32_t, 'NumFields': quay_uint32_t, 'FieldOffsetVectorOffset': quay_uint32_t}
 
-@_name_boundary.class_contract('ClassDescriptor', {'FIELDS': 'quay_FIELDS', 'Flags': 'quay_Flags', 'Parent': 'quay_Parent', 'Name': 'quay_Name', 'AccessFunction': 'quay_AccessFunction', 'FieldDescriptor': 'quay_FieldDescriptor', 'SuperclassType': 'quay_SuperclassType', 'MetadataNegativeSizeInWords': 'quay_MetadataNegativeSizeInWords', 'MetadataPositiveSizeInWords': 'quay_MetadataPositiveSizeInWords', 'NumImmediateMembers': 'quay_NumImmediateMembers', 'NumFields': 'quay_NumFields'})
+@_name_boundary.class_contract('ClassDescriptor', {'FIELDS': 'quay_FIELDS', 'Flags': 'quay_Flags', 'Parent': 'quay_Parent', 'Name': 'quay_Name', 'AccessFunction': 'quay_AccessFunction', 'FieldDescriptor': 'quay_FieldDescriptor', 'SuperclassType': 'quay_SuperclassType', 'MetadataNegativeSizeInWords': 'quay_MetadataNegativeSizeInWords', 'MetadataPositiveSizeInWords': 'quay_MetadataPositiveSizeInWords', 'NumImmediateMembers': 'quay_NumImmediateMembers', 'NumFields': 'quay_NumFields', 'FieldOffsetVectorOffset': 'quay_FieldOffsetVectorOffset'})
 class quay_ClassDescriptor(quay_Struct):
-    quay_FIELDS = {'Flags': quay_uint32_t, 'Parent': quay_int32_t, 'Name': quay_int32_t, 'AccessFunction': quay_int32_t, 'FieldDescriptor': quay_int32_t, 'SuperclassType': quay_int32_t, 'MetadataNegativeSizeInWords': quay_uint32_t, 'MetadataPositiveSizeInWords': quay_uint32_t, 'NumImmediateMembers': quay_uint32_t, 'NumFields': quay_uint32_t}
+    quay_FIELDS = {'Flags': quay_uint32_t, 'Parent': quay_int32_t, 'Name': quay_int32_t, 'AccessFunction': quay_int32_t, 'FieldDescriptor': quay_int32_t, 'SuperclassType': quay_int32_t, 'MetadataNegativeSizeInWords': quay_uint32_t, 'MetadataPositiveSizeInWords': quay_uint32_t, 'NumImmediateMembers': quay_uint32_t, 'NumFields': quay_uint32_t, 'FieldOffsetVectorOffset': quay_uint32_t}
 
 @_name_boundary.class_contract('FieldDescriptor', {'FIELDS': 'quay_FIELDS', 'MangledTypeName': 'quay_MangledTypeName', 'Superclass': 'quay_Superclass', 'Kind': 'quay_Kind', 'FieldRecordSize': 'quay_FieldRecordSize', 'NumFields': 'quay_NumFields'})
 class quay_FieldDescriptor(quay_Struct):
-    quay_FIELDS = {'MangledTypeName': quay_int32_t, 'Superclass': quay_int32_t, 'Kind': quay_uint16_t, 'FieldRecordSize': quay_int16_t, 'NumFields': quay_int32_t}
+    quay_FIELDS = {'MangledTypeName': quay_int32_t, 'Superclass': quay_int32_t, 'Kind': quay_uint16_t, 'FieldRecordSize': quay_uint16_t, 'NumFields': quay_uint32_t}
 
 @_name_boundary.class_contract('FieldRecord', {'FIELDS': 'quay_FIELDS', 'Flags': 'quay_Flags', 'MangledTypeName': 'quay_MangledTypeName', 'FieldName': 'quay_FieldName'})
 class quay_FieldRecord(quay_Struct):
