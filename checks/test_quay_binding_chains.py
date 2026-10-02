@@ -209,6 +209,61 @@ def test_symbol_table_cannot_take_a_string_or_record_from_neighbor_bytes():
         SymbolTable(image, cmd)
 
 
+def decode_apple_printed_bind_operands(trace, segment_bases, pointer_width):
+    """Independent oracle over Apple text operands, without library byte readers.
+
+    This deliberately covers only the opcodes present in the SHA-bound fixture.
+    Unknown instructions fail instead of widening an exception.
+    """
+    segment, offset, symbol, ordinal, kind = None, 0, None, None, None
+    result = []
+    for text in trace:
+        matched = re.fullmatch(r'BIND_OPCODE_(\w+)\((.*)\)', text)
+        assert matched, text
+        name, body = matched.groups()
+        args = body.split(', ') if body else []
+        if name == 'SET_DYLIB_ORDINAL_IMM':
+            ordinal = int(args[0], 0)
+        elif name == 'SET_SYMBOL_TRAILING_FLAGS_IMM':
+            assert int(args[0], 0) == 0
+            symbol = args[1]
+        elif name == 'SET_TYPE_IMM':
+            kind = int(args[0], 0)
+        elif name == 'SET_SEGMENT_AND_OFFSET_ULEB':
+            segment, offset = [int(value, 0) for value in args]
+        elif name == 'ADD_ADDR_ULEB':
+            offset = (offset + int(args[0], 0)) % (1 << 64)
+        elif name in ('DO_BIND', 'DO_BIND_ADD_ADDR_IMM_SCALED'):
+            assert symbol and ordinal in (2, 3) and kind == 1 and segment is not None
+            result.append((segment_bases[segment] + offset, symbol))
+            # Apple prints the fully scaled increment, including pointer width.
+            offset = (offset + (int(args[0], 0) if args else pointer_width)) % (1 << 64)
+        elif name == 'DONE':
+            break
+        else:
+            raise AssertionError('Unexpected oracle instruction: ' + text)
+    return dict(result)
+
+
+def test_independent_printed_binding_oracle_reuses_symbol_and_wraps_cursor():
+    trace = ['BIND_OPCODE_SET_DYLIB_ORDINAL_IMM(3)',
+             'BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM(0x00, first)',
+             'BIND_OPCODE_SET_TYPE_IMM(1)',
+             'BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB(0x00, 0x20)',
+             'BIND_OPCODE_DO_BIND()', 'BIND_OPCODE_DO_BIND()',
+             'BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM(0x00, second)',
+             'BIND_OPCODE_ADD_ADDR_ULEB(0xFFFFFFFFFFFFFFE0)',
+             'BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED(0x14)',
+             'BIND_OPCODE_DO_BIND()', 'BIND_OPCODE_DONE()']
+    assert decode_apple_printed_bind_operands(trace, [0x1000], 4) == {
+        0x1020: 'first', 0x1024: 'first', 0x1008: 'second', 0x101c: 'second'}
+
+
+def test_independent_printed_binding_oracle_does_not_ignore_unknown_operands():
+    with pytest.raises(AssertionError):
+        decode_apple_printed_bind_operands(['BIND_OPCODE_UNKNOWN(99)'], [0], 4)
+
+
 @pytest.mark.skipif(sys.platform != 'darwin', reason='Apple dyld_info supplies an independent Mach-O oracle')
 @pytest.mark.parametrize('filename', ['testbin1', 'testbin1.fat', 'testbin1.signed', 'testlib1.dylib'])
 def test_all_fixture_chained_bind_and_rebase_locations_match_apple_dyld_info(filename):
@@ -244,9 +299,21 @@ def test_all_fixture_chained_bind_and_rebase_locations_match_apple_dyld_info(fil
                 regular = output.split('        bind opcodes:\n', 1)[1].split('        lazy bind opcodes:', 1)[0]
                 trace = re.findall(r'^\s+0x[0-9a-fA-F]+ (BIND_OPCODE_\w+\([^\n]*\))$', regular, re.M)
                 assert trace == vector['regular_bind_opcodes']
-                assert actual == {int(address): name for address, name in vector['binds'].items()}
+                otool = subprocess.check_output(['/usr/bin/xcrun', 'otool', '-arch', arch, '-l', str(path)], text=True)
+                bases = [int(value, 16) for value in re.findall(r'(?m)^\s+vmaddr (0x[0-9a-fA-F]+)$', otool)]
+                assert bases == vector['segment_bases']
+                regular = decode_apple_printed_bind_operands(trace, bases, 4)
+                expected_names = {int(address): name for address, name in vector['binds'].items()}
+                assert regular == {address: name for address, name in expected_names.items() if address != 65536}
+                assert actual == expected_names
                 assert set(actual) == set(binds)
                 assert binds[65536] == '_objc_copyStruct'  # lazy target is unique
+                # Two exact Apple renderings are known for this frozen fixture:
+                # legacy correct output, or current target-ordinal reuse defect.
+                # Every other printed name difference remains a failing gate.
+                shifted = dict(expected_names)
+                shifted[65724], shifted[65748] = '__objc_empty_cache', '_objc_copyStruct'
+                assert binds == expected_names or binds == shifted, output
             else:
                 assert actual == binds, output
             if image.chained_fixups:

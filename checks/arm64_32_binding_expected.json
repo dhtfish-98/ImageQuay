@@ -28,5 +28,13 @@
     "65728": "__objc_empty_cache",
     "65748": "__objc_empty_cache",
     "65536": "_objc_copyStruct"
-  }
+  },
+  "segment_bases": [
+    0,
+    16384,
+    49152,
+    65536,
+    81920
+  ],
+  "pointer_width": 4
 }
