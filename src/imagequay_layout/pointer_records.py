@@ -52,7 +52,7 @@ quay_DYLD_CHAINED_PTR_START_LAST = 32768
 @_name_boundary.class_contract('dyld_chained_start_offsets', {'_FIELDNAMES': 'quay__FIELDNAMES', '_SIZES': 'quay__SIZES', 'SIZE': 'quay_SIZE', 'pointer_format': 'quay_pointer_format', 'starts_count': 'quay_starts_count', 'chain_starts': 'quay_chain_starts'})
 class quay_dyld_chained_start_offsets(quay_Struct):
     quay__FIELDNAMES = ['pointer_format', 'starts_count', 'chain_starts']
-    quay__SIZES = [2, 2, 2]
+    quay__SIZES = [4, 4, 4]
     quay_SIZE = sum(quay__SIZES)
 
     @_name_boundary.callable_contract({'self': 'quay_self_816fcdd', 'byte_order': 'quay_byte_order_c7a2d94'}, '__init__')
@@ -112,7 +112,7 @@ class quay_dyld_chained_import_addend(quay_Struct):
 @_name_boundary.class_contract('dyld_chained_import_addend64', {'_FIELDS': 'quay__FIELDS', 'SIZE': 'quay_SIZE', 'value': 'quay_value', 'addend': 'quay_addend', 'lib_ordinal': 'quay_lib_ordinal', 'weak_import': 'quay_weak_import', 'reserved': 'quay_reserved', 'name_offset': 'quay_name_offset'})
 class quay_dyld_chained_import_addend64(quay_Struct):
     quay__FIELDS = {'value': quay_Bitfield({'lib_ordinal': 16, 'weak_import': 1, 'reserved': 15, 'name_offset': 32}), 'addend': quay_uint64_t}
-    quay_SIZE = 8
+    quay_SIZE = 16
 
     @_name_boundary.callable_contract({'self': 'quay_self_83cf679', 'byte_order': 'quay_byte_order_20d455f'}, '__init__')
     def __init__(quay_self_83cf679, quay_byte_order_20d455f='little'):
@@ -274,11 +274,11 @@ class quay_ChainedPointerGeneric64(quay_StructUnion):
 
 @_name_boundary.class_contract('ChainedPointerGeneric32', {'SIZE': 'quay_SIZE'})
 class quay_ChainedPointerGeneric32(quay_StructUnion):
-    quay_SIZE = 8
+    quay_SIZE = 4
 
     @_name_boundary.callable_contract({'self': 'quay_self_71fe0e0'}, '__init__')
     def __init__(quay_self_71fe0e0):
-        super().__init__(quay_uint64_t, [quay_dyld_chained_ptr_32_rebase, quay_dyld_chained_ptr_32_bind, quay_dyld_chained_ptr_32_firmware_rebase])
+        super().__init__(quay_uint32_t, [quay_dyld_chained_ptr_32_rebase, quay_dyld_chained_ptr_32_bind, quay_dyld_chained_ptr_32_firmware_rebase])
 
 @_name_boundary.class_contract('ChainedFixupPointer64Union', {'SIZE': 'quay_SIZE'})
 class quay_ChainedFixupPointer64Union(quay_StructUnion):

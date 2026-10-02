@@ -64,106 +64,115 @@ class quay_MachOImageLoader:
         return quay_image_3da7aa2
 
     @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_563b3fb', 'image': 'quay_image_e82ca28', 'load_symtab': 'quay_load_symtab_c90fb80', 'load_imports': 'quay_load_imports_c3a2884', 'load_exports': 'quay_load_exports_b2afef4'}, '_parse_load_commands')
-    def quay__parse_load_commands(quay_cls_563b3fb, quay_image_e82ca28: quay_Image, quay_load_symtab_c90fb80=True, quay_load_imports_c3a2884=True, quay_load_exports_b2afef4=True) -> None:
-        quay_fixups_f096173 = None
-        _name_boundary.attributes(quay_log)['info'](f"registered {len(_name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['macho_header'])['load_commands'])} Load Commands")
-        for quay_cmd_ed94d81 in _name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['macho_header'])['load_commands']:
+    def quay__parse_load_commands(cls, image, load_symtab=True, load_imports=True, load_exports=True):
+        """Register address/library facts before interpreting dependent metadata."""
+        deferred = []
+        for cmd in image.macho_header.load_commands:
             try:
-                quay_load_command_612ac06 = quay_LOAD_COMMAND(_name_boundary.attributes(quay_cmd_ed94d81)['cmd'])
+                kind = quay_LOAD_COMMAND(cmd.cmd)
             except ValueError:
                 continue
-            if quay_load_command_612ac06 == quay_LOAD_COMMAND.SEGMENT_64 or quay_load_command_612ac06 == quay_LOAD_COMMAND.SEGMENT:
-                _name_boundary.attributes(quay_log)['debug_tm']('Loading Segment')
-                quay_segment_e386e4b = quay_Segment(quay_image_e82ca28, quay_cmd_ed94d81)
-                _name_boundary.attributes(quay_log)['info'](f"Loaded Segment {_name_boundary.attributes(quay_segment_e386e4b)['name']}")
+            if kind in (quay_LOAD_COMMAND.SEGMENT, quay_LOAD_COMMAND.SEGMENT_64):
+                segment = quay_Segment(image, cmd)
+                if segment.name in image.segments:
+                    raise quay_MalformedMachOException('duplicate segment names make metadata addressing ambiguous')
                 try:
-                    _name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['vm'])['add_segment'](quay_segment_e386e4b)
+                    image.vm.add_segment(segment)
                 except quay_MachOAlignmentError:
-                    _name_boundary.attributes(quay_image_e82ca28)['vm'] = _name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['vm'])['fallback']
-                    _name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['vm'])['add_segment'](quay_segment_e386e4b)
-                _name_boundary.attributes(quay_image_e82ca28)['segments'][_name_boundary.attributes(quay_segment_e386e4b)['name']] = quay_segment_e386e4b
-            elif quay_load_command_612ac06 in [quay_LOAD_COMMAND.THREAD, quay_LOAD_COMMAND.UNIXTHREAD]:
-                quay_thread_state_beb4f3c = []
-                for quay_i_e7666ac in range(_name_boundary.attributes(quay_cmd_ed94d81)['count']):
-                    quay_off_ebfceb2 = _name_boundary.attributes(quay_cmd_ed94d81)['off'] + 16 + quay_i_e7666ac * 4
-                    quay_val_14cc871 = _name_boundary.attributes(quay_image_e82ca28)['read_uint'](quay_off_ebfceb2, 4)
-                    quay_thread_state_beb4f3c.append(quay_val_14cc871)
-                _name_boundary.attributes(quay_image_e82ca28)['thread_state'] = quay_thread_state_beb4f3c
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.CODE_SIGNATURE:
-                _name_boundary.attributes(quay_image_e82ca28)['_codesign_cmd'] = quay_cmd_ed94d81
-                _name_boundary.attributes(quay_image_e82ca28)['codesign_info'] = _name_boundary.attributes(quay_CodesignInfo)['from_image'](quay_image_e82ca28, quay_cmd_ed94d81)
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.MAIN:
-                _name_boundary.attributes(quay_image_e82ca28)['_entry_off'] = _name_boundary.attributes(quay_cmd_ed94d81)['entryoff']
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.DYLD_INFO_ONLY:
-                _name_boundary.attributes(quay_image_e82ca28)['info'] = quay_cmd_ed94d81
-                if quay_load_imports_c3a2884:
-                    _name_boundary.attributes(quay_log)['info']('Loading Binding Info')
-                    _name_boundary.attributes(quay_image_e82ca28)['binding_table'] = quay_BindingTable(quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['bind_off'], _name_boundary.attributes(quay_cmd_ed94d81)['bind_size'])
-                    _name_boundary.attributes(quay_image_e82ca28)['weak_binding_table'] = quay_BindingTable(quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['weak_bind_off'], _name_boundary.attributes(quay_cmd_ed94d81)['weak_bind_size'])
-                    _name_boundary.attributes(quay_image_e82ca28)['lazy_binding_table'] = quay_BindingTable(quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['lazy_bind_off'], _name_boundary.attributes(quay_cmd_ed94d81)['lazy_bind_size'])
-                if quay_load_exports_b2afef4:
-                    _name_boundary.attributes(quay_log)['info']('Loading Export Trie')
-                    _name_boundary.attributes(quay_image_e82ca28)['export_trie'] = _name_boundary.attributes(quay_ExportTrie)['from_image'](quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['export_off'], _name_boundary.attributes(quay_cmd_ed94d81)['export_size'])
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.FUNCTION_STARTS:
-                quay_fs_start_2a01215 = _name_boundary.attributes(quay_cmd_ed94d81)['dataoff']
-                quay_fs_size_51f0c60 = _name_boundary.attributes(quay_cmd_ed94d81)['datasize']
-                region = ByteRegion(quay_image_e82ca28, quay_fs_start_2a01215, quay_fs_size_51f0c60)
-                cursor = region.start
-                address = quay_image_e82ca28.vm.vm_base_addr
+                    image.vm = image.vm.fallback
+                    image.vm.add_segment(segment)
+                image.segments[segment.name] = segment
+            elif isinstance(cmd, quay_dylib_command):
+                linked = quay_LinkedImage(image, cmd)
+                if kind == quay_LOAD_COMMAND.ID_DYLIB:
+                    image.dylib = linked
+                else:
+                    image.linked_images.append(linked)
+            elif kind == quay_LOAD_COMMAND.UUID:
+                image.uuid = cmd.uuid
+            elif kind == quay_LOAD_COMMAND.MAIN:
+                image._entry_off = cmd.entryoff
+            elif kind in (quay_LOAD_COMMAND.SUB_CLIENT, quay_LOAD_COMMAND.RPATH):
+                relative = cmd.offset if kind == quay_LOAD_COMMAND.SUB_CLIENT else cmd.path
+                if relative < 12 or relative >= cmd.cmdsize:
+                    raise quay_MalformedMachOException('load-command string lies outside its command')
+                text = image.read_cstr(cmd.off+relative, limit=cmd.cmdsize-relative)
+                if kind == quay_LOAD_COMMAND.SUB_CLIENT:
+                    image.allowed_clients.append(text)
+                else:
+                    image.rpath = text
+            elif kind == quay_LOAD_COMMAND.BUILD_VERSION:
+                if cmd.ntools > (cmd.cmdsize-quay_build_version_command.size())//8:
+                    raise quay_MalformedMachOException('build tool count exceeds its load command')
+                try:
+                    image.platform = quay_PlatformType(cmd.platform)
+                except ValueError:
+                    image.platform = quay_PlatformType.UNK
+                image.platform_id = cmd.platform
+                image.minos = quay_os_version(x=(cmd.minos >> 16) & 0xffff, y=(cmd.minos >> 8) & 255, z=cmd.minos & 255)
+                image.sdk_version = quay_os_version(x=(cmd.sdk >> 16) & 0xffff, y=(cmd.sdk >> 8) & 255, z=cmd.sdk & 255)
+            elif isinstance(cmd, quay_version_min_command):
+                platforms = {quay_LOAD_COMMAND.VERSION_MIN_MACOSX: quay_PlatformType.MACOS,
+                    quay_LOAD_COMMAND.VERSION_MIN_IPHONEOS: quay_PlatformType.IOS,
+                    quay_LOAD_COMMAND.VERSION_MIN_TVOS: quay_PlatformType.TVOS,
+                    quay_LOAD_COMMAND.VERSION_MIN_WATCHOS: quay_PlatformType.WATCHOS}
+                if image.platform == quay_PlatformType.UNK:
+                    image.platform = platforms.get(kind, quay_PlatformType.UNK)
+                    version = cmd.version
+                    image.minos = quay_os_version(x=(version >> 16) & 0xffff, y=(version >> 8) & 255, z=version & 255)
+            elif kind in (quay_LOAD_COMMAND.THREAD, quay_LOAD_COMMAND.UNIXTHREAD):
+                # Preserve the first register flavor; validate every declared flavor.
+                cursor, endpoint, first = cmd.off+8, cmd.off+cmd.cmdsize, True
+                while cursor < endpoint:
+                    if endpoint-cursor < 8:
+                        raise quay_MalformedMachOException('thread-state flavor header is truncated')
+                    count = image.read_uint(cursor+4, 4)
+                    cursor += 8
+                    if count > (1 << 20):
+                        raise quay_MalformedMachOException('thread-state count exceeds its 1048576-word budget')
+                    if count > (endpoint-cursor)//4:
+                        raise quay_MalformedMachOException('thread-state count exceeds its load command')
+                    if first:
+                        image.thread_state = [image.read_uint(cursor+4*i, 4) for i in range(count)]
+                        first = False
+                    cursor += count*4
+            else:
+                deferred.append((kind, cmd))
+        # All local VM mappings and library ordinals now exist, regardless of LC order.
+        for kind, cmd in deferred:
+            if kind == quay_LOAD_COMMAND.CODE_SIGNATURE:
+                image._codesign_cmd = cmd
+                image.codesign_info = quay_CodesignInfo.from_image(image, cmd)
+            elif kind in (quay_LOAD_COMMAND.DYLD_INFO, quay_LOAD_COMMAND.DYLD_INFO_ONLY):
+                image.info = cmd
+                if load_imports:
+                    image.binding_table = quay_BindingTable(image, cmd.bind_off, cmd.bind_size)
+                    image.weak_binding_table = quay_BindingTable(image, cmd.weak_bind_off, cmd.weak_bind_size, kind='weak')
+                    image.lazy_binding_table = quay_BindingTable(image, cmd.lazy_bind_off, cmd.lazy_bind_size, kind='lazy')
+                if load_exports:
+                    image.export_trie = quay_ExportTrie.from_image(image, cmd.export_off, cmd.export_size)
+            elif kind == quay_LOAD_COMMAND.LC_DYLD_CHAINED_FIXUPS and load_imports:
+                image.chained_fixups = quay_ChainedFixups.from_image(image, cmd)
+            elif kind == quay_LOAD_COMMAND.LC_DYLD_EXPORTS_TRIE and load_exports:
+                image.export_trie = quay_ExportTrie.from_image(image, cmd.dataoff, cmd.datasize)
+            elif kind == quay_LOAD_COMMAND.SYMTAB and load_symtab:
+                image.symbol_table = _name_boundary.read_attribute(cls, 'SYMTAB_LOADER')(image, cmd)
+            elif kind == quay_LOAD_COMMAND.FUNCTION_STARTS:
+                region = ByteRegion(image, cmd.dataoff, cmd.datasize)
+                cursor, address = region.start, image.vm.vm_base_addr
+                if address is None:
+                    raise quay_MalformedMachOException('function starts require a local VM base')
                 while cursor < region.end:
                     region.use()
                     delta, cursor = region.leb(cursor)
+                    if not delta:
+                        if any(region.bytes(cursor, region.end-cursor)):
+                            raise quay_MalformedMachOException('nonzero data follows the function-starts terminator')
+                        break
+                    if delta > (1 << 64)-1-address:
+                        raise quay_MalformedMachOException('function-start address exceeds 64 bits')
                     address += delta
-                    if address >= 1 << 64:
-                        raise quay_MalformedMachOException('function-start address overflows 64 bits')
-                    quay_image_e82ca28.function_starts.append(address)
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.LC_DYLD_EXPORTS_TRIE:
-                _name_boundary.attributes(quay_log)['info']('Loading Export Trie')
-                _name_boundary.attributes(quay_image_e82ca28)['export_trie'] = _name_boundary.attributes(quay_ExportTrie)['from_image'](quay_image_e82ca28, _name_boundary.attributes(quay_cmd_ed94d81)['dataoff'], _name_boundary.attributes(quay_cmd_ed94d81)['datasize'])
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.LC_DYLD_CHAINED_FIXUPS:
-                if quay_load_imports_c3a2884:
-                    _name_boundary.attributes(quay_image_e82ca28)['chained_fixups'] = _name_boundary.attributes(quay_ChainedFixups)['from_image'](quay_image_e82ca28, quay_cmd_ed94d81)
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.SYMTAB:
-                if quay_load_symtab_c90fb80:
-                    _name_boundary.attributes(quay_log)['info']('Loading Symbol Table')
-                    _name_boundary.attributes(quay_image_e82ca28)['symbol_table'] = _name_boundary.attributes(quay_MachOImageLoader)['SYMTAB_LOADER'](quay_image_e82ca28, quay_cmd_ed94d81)
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.DYSYMTAB:
-                pass
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.UUID:
-                _name_boundary.attributes(quay_image_e82ca28)['uuid'] = _name_boundary.attributes(quay_cmd_ed94d81)['uuid']
-                _name_boundary.attributes(quay_log)['info'](f"image UUID: {_name_boundary.attributes(quay_image_e82ca28)['uuid']}")
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.SUB_CLIENT:
-                quay_string_7881846 = _name_boundary.attributes(quay_image_e82ca28)['read_cstr'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + _name_boundary.attributes(quay_cmd_ed94d81)['offset'])
-                _name_boundary.attributes(quay_image_e82ca28)['allowed_clients'].append(quay_string_7881846)
-                _name_boundary.attributes(quay_log)['debug'](f'Loaded Subclient "{quay_string_7881846}"')
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.RPATH:
-                quay_string_7881846 = _name_boundary.attributes(quay_image_e82ca28)['read_cstr'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + _name_boundary.attributes(quay_cmd_ed94d81)['path'])
-                _name_boundary.attributes(quay_image_e82ca28)['rpath'] = quay_string_7881846
-                _name_boundary.attributes(quay_log)['info'](f'image Resource Path: {quay_string_7881846}')
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.BUILD_VERSION:
-                _name_boundary.attributes(quay_image_e82ca28)['platform'] = quay_PlatformType(_name_boundary.attributes(quay_cmd_ed94d81)['platform'])
-                _name_boundary.attributes(quay_image_e82ca28)['minos'] = quay_os_version(x=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 14, 2), y=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 13, 1), z=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 12, 1))
-                _name_boundary.attributes(quay_image_e82ca28)['sdk_version'] = quay_os_version(x=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 18, 2), y=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 17, 1), z=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 16, 1))
-                _name_boundary.attributes(quay_log)['info'](f"Loaded platform {_name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['platform'])['name']} | Minimum OS {_name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['minos'])['x']}.{_name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['minos'])['y']}.{_name_boundary.attributes(quay_image_e82ca28)['minos'].z} | SDK Version {_name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['sdk_version'])['x']}.{_name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['sdk_version'])['y']}.{_name_boundary.attributes(quay_image_e82ca28)['sdk_version'].z}")
-            elif isinstance(quay_cmd_ed94d81, quay_version_min_command):
-                if _name_boundary.attributes(quay_image_e82ca28)['platform'] == quay_PlatformType.UNK:
-                    if quay_load_command_612ac06 == quay_LOAD_COMMAND.VERSION_MIN_MACOSX:
-                        _name_boundary.attributes(quay_image_e82ca28)['platform'] = quay_PlatformType.MACOS
-                    elif quay_load_command_612ac06 == quay_LOAD_COMMAND.VERSION_MIN_IPHONEOS:
-                        _name_boundary.attributes(quay_image_e82ca28)['platform'] = quay_PlatformType.IOS
-                    elif quay_load_command_612ac06 == quay_LOAD_COMMAND.VERSION_MIN_TVOS:
-                        _name_boundary.attributes(quay_image_e82ca28)['platform'] = quay_PlatformType.TVOS
-                    elif quay_load_command_612ac06 == quay_LOAD_COMMAND.VERSION_MIN_WATCHOS:
-                        _name_boundary.attributes(quay_image_e82ca28)['platform'] = quay_PlatformType.WATCHOS
-                    _name_boundary.attributes(quay_image_e82ca28)['minos'] = quay_os_version(x=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 10, 2), y=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 9, 1), z=_name_boundary.attributes(quay_image_e82ca28)['read_uint'](_name_boundary.attributes(quay_cmd_ed94d81)['off'] + 8, 1))
-            elif quay_load_command_612ac06 == quay_LOAD_COMMAND.ID_DYLIB:
-                _name_boundary.attributes(quay_image_e82ca28)['dylib'] = quay_LinkedImage(quay_image_e82ca28, quay_cmd_ed94d81)
-                _name_boundary.attributes(quay_log)['debug'](f"Loaded local dylib_command with install_name {_name_boundary.attributes(_name_boundary.attributes(quay_image_e82ca28)['dylib'])['install_name']}")
-            elif isinstance(quay_cmd_ed94d81, quay_dylib_command):
-                quay_external_dylib_52b655a = quay_LinkedImage(quay_image_e82ca28, quay_cmd_ed94d81)
-                _name_boundary.attributes(quay_image_e82ca28)['linked_images'].append(quay_external_dylib_52b655a)
-                _name_boundary.attributes(quay_log)['debug'](f"Loaded linked dylib_command with install name {_name_boundary.attributes(quay_external_dylib_52b655a)['install_name']}")
+                    image.function_starts.append(address)
 
     @staticmethod
     @_name_boundary.callable_contract({'image': 'quay_image_466e9b4'}, '_process_image')
@@ -209,6 +218,9 @@ class quay_MachOImageLoader:
             for quay_symbol_addf870 in _name_boundary.attributes(_name_boundary.attributes(quay_image_466e9b4)['symbol_table'])['table']:
                 _name_boundary.attributes(quay_image_466e9b4)['symbols'][_name_boundary.attributes(quay_symbol_addf870)['address']] = quay_symbol_addf870
         if len(_name_boundary.attributes(quay_image_466e9b4)['thread_state']) > 0:
+            minimum = 4 if quay_image_466e9b4.macho_header.is64 else 2
+            if len(quay_image_466e9b4.thread_state) < minimum:
+                raise quay_MalformedMachOException('thread state is too short for the inherited entry-point interpretation')
             _name_boundary.attributes(quay_image_466e9b4)['entry_point'] = _name_boundary.attributes(quay_image_466e9b4)['thread_state'][-4] if _name_boundary.attributes(_name_boundary.attributes(quay_image_466e9b4)['macho_header'])['is64'] else _name_boundary.attributes(quay_image_466e9b4)['thread_state'][-2]
         elif _name_boundary.attributes(quay_image_466e9b4)['_entry_off'] > 0:
             _name_boundary.attributes(quay_image_466e9b4)['entry_point'] = _name_boundary.attributes(_name_boundary.attributes(quay_image_466e9b4)['vm'])['vm_base_addr'] + _name_boundary.attributes(quay_image_466e9b4)['_entry_off']
@@ -229,22 +241,24 @@ class quay_Symbol(quay_Constructable):
     """
 
     @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_38a9652', 'image': 'quay_image_3ec6ab8', 'cmd': 'quay_cmd_47938ba', 'entry': 'quay_entry_f5de662'}, 'from_image')
-    def quay_from_image(quay_cls_38a9652, quay_image_3ec6ab8, quay_cmd_47938ba, quay_entry_f5de662):
-        quay_fullname_61ba025 = _name_boundary.attributes(quay_image_3ec6ab8)['read_cstr'](_name_boundary.attributes(quay_entry_f5de662)['str_index'] + _name_boundary.attributes(quay_cmd_47938ba)['stroff'])
-        quay_addr_90a2434 = _name_boundary.attributes(quay_entry_f5de662)['value']
-        quay_symbol_ea83700 = _name_boundary.attributes(quay_cls_38a9652)['from_values'](quay_fullname_61ba025, quay_addr_90a2434)
-        quay_N_STAB_82480c6 = 224
-        quay_N_PEXT_e27b44e = 16
-        quay_N_TYPE_6ec7f6d = 14
-        quay_N_EXT_63162d0 = 1
-        quay_type_masked_64720ba = quay_N_TYPE_6ec7f6d & _name_boundary.attributes(quay_entry_f5de662)['type']
-        for quay_name_921c0c0, quay_flag_12a250e in _name_boundary.attributes({'N_UNDF': 0, 'N_ABS': 2, 'N_SECT': 14, 'N_PBUD': 12, 'N_INDR': 10})['items']():
-            if quay_type_masked_64720ba & quay_flag_12a250e:
-                _name_boundary.attributes(quay_symbol_ea83700)['types'].append(quay_name_921c0c0)
-        if _name_boundary.attributes(quay_entry_f5de662)['type'] & quay_N_EXT_63162d0:
-            _name_boundary.attributes(quay_symbol_ea83700)['external'] = True
-        return quay_symbol_ea83700
+    def quay_from_image(cls, image, cmd, entry):
+        strings = ByteRegion(image, cmd.stroff, cmd.strsize)
+        if entry.str_index >= cmd.strsize:
+            raise quay_MalformedMachOException('symbol string index leaves its string table')
+        try:
+            fullname, _ = strings.cstring(strings.start+entry.str_index)
+        except UnicodeError as error:
+            raise quay_MalformedMachOException('symbol name is not UTF-8') from error
+        symbol = cls.from_values(fullname, entry.value, external=bool(entry.type & 1))
+        symbol.entry = entry
+        symbol.debug, symbol.private_external = bool(entry.type & 0xe0), bool(entry.type & 0x10)
+        symbol.library_ordinal = (entry.desc >> 8) & 255
+        symbol.types = [{0: 'N_UNDF', 2: 'N_ABS', 0xe: 'N_SECT', 0xc: 'N_PBUD', 0xa: 'N_INDR'}.get(entry.type & 0xe, 'N_UNKNOWN')]
+        if (entry.type & 0xe) == 0xa:
+            if entry.value >= cmd.strsize:
+                raise quay_MalformedMachOException('indirect symbol name leaves its string table')
+            symbol.indirect_name, _ = strings.cstring(strings.start+entry.value)
+        return symbol
 
     @classmethod
     @_name_boundary.callable_contract({'cls': 'quay_cls_aa21974', 'fullname': 'quay_fullname_239e9c3', 'value': 'quay_value_486f21a', 'external': 'quay_external_8c13470', 'ordinal': 'quay_ordinal_b250558'}, 'from_values')
@@ -284,240 +298,29 @@ class quay_Symbol(quay_Constructable):
         _name_boundary.attributes(quay_self_2d13806)['external'] = quay_external_061e299
         _name_boundary.attributes(quay_self_2d13806)['attr'] = None
 
-@_name_boundary.class_contract('SymbolTable', {'_load_symbol_table': 'quay__load_symbol_table', 'image': 'quay_image', 'cmd': 'quay_cmd', 'ext': 'quay_ext', 'table': 'quay_table'})
+@_name_boundary.class_contract('SymbolTable', {name: 'quay_'+name for name in ('image', 'cmd', 'ext', 'table', '_load_symbol_table')})
 class quay_SymbolTable:
-    """
-    This class represents the symbol table declared in the MachO File
+    """Bounded nlist records and strings from their separate declared regions."""
+    def __init__(self, image, cmd):
+        self.image, self.cmd, self.ext = image, cmd, []
+        self.table = self._load_symbol_table()
 
-    .table contains the symbol table
+    def quay__load_symbol_table(self):
+        entry_type = quay_symtab_entry if self.image.macho_header.is64 else quay_symtab_entry_32
+        width = entry_type.size()
+        entries = ByteRegion(self.image, self.cmd.symoff, self.cmd.nsyms*width)
+        strings = ByteRegion(self.image, self.cmd.stroff, self.cmd.strsize)
+        entries.use(self.cmd.nsyms)
+        table = []
+        for index in range(self.cmd.nsyms):
+            entry = self.image.read_struct(entries.start+index*width, entry_type)
+            symbol = quay_Symbol.from_image(self.image, self.cmd, entry)
+            table.append(symbol)
+            if symbol.external:
+                self.ext.append(symbol)
+        return table
 
-    .ext contains exported symbols, i think?
-
-    This class is incomplete
-
-    """
-
-    @_name_boundary.callable_contract({'self': 'quay_self_a5800e0', 'image': 'quay_image_23e4bd2', 'cmd': 'quay_cmd_9c2aa86'}, '__init__')
-    def __init__(quay_self_a5800e0, quay_image_23e4bd2: quay_Image, quay_cmd_9c2aa86: quay_symtab_command):
-        _name_boundary.attributes(quay_self_a5800e0)['image']: quay_Image = quay_image_23e4bd2
-        _name_boundary.attributes(quay_self_a5800e0)['cmd']: quay_symtab_command = quay_cmd_9c2aa86
-        _name_boundary.attributes(quay_self_a5800e0)['ext']: quay_List[quay_Symbol] = []
-        _name_boundary.attributes(quay_self_a5800e0)['table']: quay_List[quay_Symbol] = _name_boundary.attributes(quay_self_a5800e0)['_load_symbol_table']()
-
-    @_name_boundary.callable_contract({'self': 'quay_self_fd00f8a'}, '_load_symbol_table')
-    def quay__load_symbol_table(quay_self_fd00f8a) -> quay_List[quay_Symbol]:
-        quay_symbol_table_629221d = []
-        quay_read_address_0878e1b = _name_boundary.attributes(_name_boundary.attributes(quay_self_fd00f8a)['cmd'])['symoff']
-        quay_typing_81c5ce9 = quay_symtab_entry if _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_self_fd00f8a)['image'])['macho_header'])['is64'] else quay_symtab_entry_32
-        for quay_i_39ae3a7 in range(0, _name_boundary.attributes(_name_boundary.attributes(quay_self_fd00f8a)['cmd'])['nsyms']):
-            quay_entry_40e4d61 = _name_boundary.attributes(_name_boundary.attributes(quay_self_fd00f8a)['image'])['read_struct'](quay_read_address_0878e1b + _name_boundary.attributes(quay_typing_81c5ce9)['size']() * quay_i_39ae3a7, quay_typing_81c5ce9)
-            quay_symbol_99aa1f1 = _name_boundary.attributes(quay_Symbol)['from_image'](_name_boundary.attributes(quay_self_fd00f8a)['image'], _name_boundary.attributes(quay_self_fd00f8a)['cmd'], quay_entry_40e4d61)
-            quay_symbol_table_629221d.append(quay_symbol_99aa1f1)
-            if _name_boundary.attributes(quay_symbol_99aa1f1)['external']:
-                _name_boundary.attributes(quay_self_fd00f8a)['ext'].append(quay_symbol_99aa1f1)
-            _name_boundary.attributes(quay_log)['debug_tm'](f"Symbol Table: Loaded symbol:{_name_boundary.attributes(quay_symbol_99aa1f1)['name']} ordinal:{_name_boundary.attributes(quay_symbol_99aa1f1)['ordinal']} type:{_name_boundary.attributes(quay_symbol_99aa1f1)['dec_type']}")
-            _name_boundary.attributes(quay_log)['debug_tm'](str(quay_entry_40e4d61))
-        return quay_symbol_table_629221d
-
-@_name_boundary.class_contract('ChainedFixups', {'from_image': 'quay_from_image', 'from_values': 'quay_from_values', 'raw_bytes': 'quay_raw_bytes', 'symbols': 'quay_symbols', 'rebases': 'quay_rebases'})
-class quay_ChainedFixups(quay_Constructable):
-
-    @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_d293e50', 'image': 'quay_image_f2d6319', 'chained_fixup_cmd': 'quay_chained_fixup_cmd_3afc574'}, 'from_image')
-    def quay_from_image(quay_cls_d293e50, quay_image_f2d6319: quay_Image, quay_chained_fixup_cmd_3afc574: quay_linkedit_data_command):
-        quay_syms_14b01a1 = []
-        quay_rebases_07f1425 = {}
-        quay_fixup_header_56d514b = _name_boundary.attributes(quay_image_f2d6319)['read_struct'](_name_boundary.attributes(quay_chained_fixup_cmd_3afc574)['dataoff'], quay_dyld_chained_fixups_header)
-        _name_boundary.attributes(quay_log)['debug_tm'](f"{_name_boundary.attributes(quay_fixup_header_56d514b)['render_indented']()}")
-        if _name_boundary.attributes(quay_fixup_header_56d514b)['fixups_version'] > 0:
-            _name_boundary.attributes(quay_log)['error']('Unknown Fixup Format')
-            return quay_cls_d293e50([])
-        quay_import_table_size_4e3f24a = _name_boundary.attributes(quay_fixup_header_56d514b)['imports_count'] * _name_boundary.attributes(quay_dyld_chained_import)['size']()
-        if quay_import_table_size_4e3f24a > _name_boundary.attributes(quay_chained_fixup_cmd_3afc574)['datasize']:
-            _name_boundary.attributes(quay_log)['error']('Chained fixup import table is larger than chained fixup linkedit region')
-            return quay_cls_d293e50([])
-        if _name_boundary.attributes(quay_fixup_header_56d514b)['imports_format'] != _name_boundary.attributes(quay_dyld_chained_import_format.DYLD_CHAINED_IMPORT)['value']:
-            _name_boundary.attributes(quay_log)['error']('Unknown or unhandled import format')
-        quay_imports_address_8dac123 = _name_boundary.attributes(quay_fixup_header_56d514b)['off'] + _name_boundary.attributes(quay_fixup_header_56d514b)['imports_offset']
-        quay_symbols_address_1067a6f = _name_boundary.attributes(quay_fixup_header_56d514b)['off'] + _name_boundary.attributes(quay_fixup_header_56d514b)['symbols_offset']
-        quay_import_entry_t_a60a93c = _name_boundary.named_record('import_entry_t', ['ord', 'weak', 'name'])
-        quay_import_table_4f71561 = []
-        for quay_i_af548f6 in range(0, _name_boundary.attributes(quay_fixup_header_56d514b)['imports_count']):
-            quay_i_addr_4861e63 = quay_i_af548f6 * 4 + quay_imports_address_8dac123
-            quay_i_entry_3038789 = _name_boundary.attributes(quay_image_f2d6319)['read_struct'](quay_i_addr_4861e63, quay_dyld_chained_import)
-            quay_lib_ord_d8d26c2 = _name_boundary.attributes(quay_i_entry_3038789)['lib_ordinal']
-            quay_is_weak_d5249a5 = _name_boundary.attributes(quay_i_entry_3038789)['weak_import']
-            quay_name_addr_2777957 = quay_symbols_address_1067a6f + _name_boundary.attributes(quay_i_entry_3038789)['name_offset']
-            quay_sym_name_afcba33 = _name_boundary.attributes(quay_image_f2d6319)['read_cstr'](quay_name_addr_2777957)
-            quay_entry_1b684bd = quay_import_entry_t_a60a93c(quay_lib_ord_d8d26c2, quay_is_weak_d5249a5, quay_sym_name_afcba33)
-            quay_import_table_4f71561.append(quay_entry_1b684bd)
-            _name_boundary.attributes(quay_log)['debug_tm'](f'ChFx:ImportTable: {quay_sym_name_afcba33} @ ord {quay_lib_ord_d8d26c2}')
-        quay_fixup_starts_address_f1a27aa = _name_boundary.attributes(quay_chained_fixup_cmd_3afc574)['dataoff'] + _name_boundary.attributes(quay_fixup_header_56d514b)['starts_offset']
-        quay_segment_count_578fce4 = _name_boundary.attributes(quay_image_f2d6319)['read_uint'](quay_fixup_starts_address_f1a27aa, 4)
-        quay_seg_info_offsets_350cde3 = []
-        quay_cursor_4cd5767 = quay_fixup_starts_address_f1a27aa + 4
-        for quay_i_af548f6 in range(0, quay_segment_count_578fce4):
-            quay_seg_info_offsets_350cde3.append(_name_boundary.attributes(quay_image_f2d6319)['read_uint'](quay_cursor_4cd5767, 4))
-            quay_cursor_4cd5767 += 4
-        for quay_off_fd0bd05 in quay_seg_info_offsets_350cde3:
-            if quay_off_fd0bd05 == 0:
-                continue
-            quay_segstarts_addr_d159920 = quay_fixup_starts_address_f1a27aa + quay_off_fd0bd05
-            quay_starts_3d31dbe = _name_boundary.attributes(quay_image_f2d6319)['read_struct'](quay_segstarts_addr_d159920, quay_dyld_chained_starts_in_segment, endian='little')
-            quay_stride_size_3891437: int = 0
-            quay_ptr_format_2a6cf22: quay_ChainedFixupPointerGeneric = quay_ChainedFixupPointerGeneric.Error
-            if _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] in [_name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E)['value'], _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_USERLAND)['value'], _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_USERLAND24)['value']]:
-                quay_stride_size_3891437 = 8
-                quay_ptr_format_2a6cf22 = quay_ChainedFixupPointerGeneric.GenericArm64eFixupFormat
-            elif _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] == _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_KERNEL)['value']:
-                quay_stride_size_3891437 = 4
-                quay_ptr_format_2a6cf22 = quay_ChainedFixupPointerGeneric.GenericArm64eFixupFormat
-            elif _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] in [_name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_64)['value'], _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_64_OFFSET)['value']]:
-                quay_stride_size_3891437 = 4
-                quay_ptr_format_2a6cf22 = quay_ChainedFixupPointerGeneric.Generic64FixupFormat
-            elif _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] in [_name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_32)['value'], _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_32_CACHE)['value']]:
-                quay_stride_size_3891437 = 4
-                quay_ptr_format_2a6cf22 = quay_ChainedFixupPointerGeneric.Generic32FixupFormat
-            elif _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] == _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_32_FIRMWARE)['value']:
-                quay_stride_size_3891437 = 4
-                quay_ptr_format_2a6cf22 = quay_ChainedFixupPointerGeneric.Generic64FixupFormat
-            elif _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] == _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_64_KERNEL_CACHE)['value']:
-                quay_stride_size_3891437 = 4
-                quay_ptr_format_2a6cf22 = quay_ChainedFixupPointerGeneric.Kernel64FixupFormat
-            elif _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] == _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_x86_64_KERNEL_CACHE)['value']:
-                quay_stride_size_3891437 = 1
-                quay_ptr_format_2a6cf22 = quay_ChainedFixupPointerGeneric.Kernel64FixupFormat
-            else:
-                _name_boundary.attributes(quay_log)['error'](f"Unsupported Pointer Format {_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']}")
-                _name_boundary.attributes(quay_log)['error'](f"{hex(_name_boundary.attributes(quay_fixup_header_56d514b)['off'])} @ {_name_boundary.attributes(quay_fixup_header_56d514b)['render_indented']()}")
-                _name_boundary.attributes(quay_log)['error'](f"{_name_boundary.attributes(quay_starts_3d31dbe)['render_indented']()}")
-                return quay_cls_d293e50([])
-            _name_boundary.attributes(quay_log)['debug_tm'](f'Stride Size: {quay_stride_size_3891437}')
-            quay_page_start_offsets_f8715be: quay_List[quay_List[int]] = []
-            for quay_i_af548f6 in range(0, _name_boundary.attributes(quay_starts_3d31dbe)['page_count']):
-                quay_page_start_table_start_address_b05a5a0 = quay_segstarts_addr_d159920 + 22
-                quay_i_addr_4861e63 = quay_page_start_table_start_address_b05a5a0 + 2 * quay_i_af548f6
-                quay_start_54f0809 = _name_boundary.attributes(quay_image_f2d6319)['read_uint'](quay_i_addr_4861e63, 2)
-                if quay_start_54f0809 & quay_DYLD_CHAINED_PTR_START_MULTI and quay_start_54f0809 != quay_DYLD_CHAINED_PTR_START_NONE:
-                    quay_overflow_index_f9bce88 = quay_start_54f0809 & ~quay_DYLD_CHAINED_PTR_START_MULTI
-                    quay_page_start_sub_starts_2551e00: quay_List[int] = []
-                    quay_cursor_4cd5767 = quay_page_start_table_start_address_b05a5a0 + quay_overflow_index_f9bce88 * 2
-                    quay_done_e03fda6 = False
-                    while not quay_done_e03fda6:
-                        quay_sub_page_start_6972be1 = _name_boundary.attributes(quay_image_f2d6319)['read_uint'](quay_cursor_4cd5767, 2)
-                        quay_cursor_4cd5767 += 2
-                        if quay_sub_page_start_6972be1 & quay_DYLD_CHAINED_PTR_START_LAST:
-                            quay_page_start_sub_starts_2551e00.append(quay_sub_page_start_6972be1 & ~quay_DYLD_CHAINED_PTR_START_LAST)
-                            quay_done_e03fda6 = True
-                        else:
-                            quay_page_start_sub_starts_2551e00.append(quay_sub_page_start_6972be1)
-                    quay_page_start_offsets_f8715be.append(quay_page_start_sub_starts_2551e00)
-                else:
-                    quay_page_start_offsets_f8715be.append([quay_start_54f0809])
-            quay_i_af548f6 = -1
-            for quay_page_starts_7041ed7 in quay_page_start_offsets_f8715be:
-                quay_i_af548f6 += 1
-                quay_page_addr_8a818a4 = _name_boundary.attributes(quay_starts_3d31dbe)['segment_offset'] + quay_i_af548f6 * _name_boundary.attributes(quay_starts_3d31dbe)['page_size']
-                for quay_start_54f0809 in quay_page_starts_7041ed7:
-                    if quay_start_54f0809 == quay_DYLD_CHAINED_PTR_START_NONE:
-                        continue
-                    quay_chain_entry_address_b63c0e0 = quay_page_addr_8a818a4 + quay_start_54f0809
-                    quay_fixups_done_b5c693e = False
-                    while not quay_fixups_done_b5c693e:
-                        quay_cursor_4cd5767 = quay_chain_entry_address_b63c0e0
-                        quay_mapped_cursor_c112130 = _name_boundary.attributes(_name_boundary.attributes(quay_image_f2d6319)['vm'])['de_translate'](quay_cursor_4cd5767)
-                        quay_pointer32_8077cdf: quay_ChainedFixupPointer32 = None
-                        quay_pointer64_02a6b25: quay_ChainedFixupPointer64 = None
-                        quay_pointerKern64_305ecab: quay_ChainedFixupKernel64 = None
-                        if quay_ptr_format_2a6cf22 in [quay_ChainedFixupPointerGeneric.Generic32FixupFormat, quay_ChainedFixupPointerGeneric.Firmware32FixupFormat]:
-                            quay_pointer32_8077cdf = _name_boundary.attributes(quay_image_f2d6319)['read_struct'](quay_cursor_4cd5767, quay_ChainedFixupPointer32)
-                        elif quay_ptr_format_2a6cf22 == quay_ChainedFixupPointerGeneric.Kernel64FixupFormat:
-                            quay_pointerKern64_305ecab = _name_boundary.attributes(quay_image_f2d6319)['read_struct'](quay_cursor_4cd5767, quay_ChainedFixupKernel64)
-                        else:
-                            quay_pointer64_02a6b25 = _name_boundary.attributes(quay_image_f2d6319)['read_struct'](quay_cursor_4cd5767, quay_ChainedFixupPointer64)
-                        quay_bind_8bd2283: bool = False
-                        quay_next_entry_stride_count_699e44f = 0
-                        if quay_ptr_format_2a6cf22 == quay_ChainedFixupPointerGeneric.Generic32FixupFormat:
-                            quay_bind_8bd2283 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer32_8077cdf)['generic32'])['dyld_chained_ptr_32_bind'])['bind'] != 0
-                            quay_next_entry_stride_count_699e44f = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer32_8077cdf)['generic32'])['dyld_chained_ptr_32_rebase'])['next']
-                        elif quay_ptr_format_2a6cf22 == quay_ChainedFixupPointerGeneric.Generic64FixupFormat:
-                            quay_bind_8bd2283 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerGeneric64'])['dyld_chained_ptr_64_bind'])['bind'] != 0
-                            quay_next_entry_stride_count_699e44f = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerGeneric64'])['dyld_chained_ptr_64_rebase'])['next']
-                        elif quay_ptr_format_2a6cf22 == quay_ChainedFixupPointerGeneric.GenericArm64eFixupFormat:
-                            quay_bind_8bd2283 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_bind'])['bind'] != 0
-                            quay_next_entry_stride_count_699e44f = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_bind'])['next']
-                        elif quay_ptr_format_2a6cf22 == quay_ChainedFixupPointerGeneric.Firmware32FixupFormat:
-                            quay_bind_8bd2283 = False
-                            quay_next_entry_stride_count_699e44f = _name_boundary.attributes(_name_boundary.attributes(quay_pointer32_8077cdf)['generic32'])['dyld_chained_ptr_32_firmware_rebase']
-                        elif quay_ptr_format_2a6cf22 == quay_ChainedFixupPointerGeneric.Kernel64FixupFormat:
-                            quay_bind_8bd2283 = False
-                            quay_next_entry_stride_count_699e44f = _name_boundary.attributes(quay_pointerKern64_305ecab)['next']
-                        else:
-                            _name_boundary.attributes(quay_log)['error']('unreachable')
-                            return quay_cls_d293e50([])
-                        if quay_bind_8bd2283:
-                            quay_ordinal_05c5125 = 0
-                            if _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] in [_name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_64)['value'], _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_64_OFFSET)['value']]:
-                                quay_ordinal_05c5125 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerGeneric64'])['dyld_chained_ptr_64_bind'])['ordinal']
-                            elif _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] in [_name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E)['value'], _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_USERLAND)['value'], _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_KERNEL)['value']]:
-                                if _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_bind'])['auth'] != 0:
-                                    quay_ordinal_05c5125 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_auth_bind24'])['ordinal'] if _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] == quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_USERLAND24 else _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_auth_bind'])['ordinal']
-                                else:
-                                    quay_ordinal_05c5125 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_bind24'])['ordinal'] if _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] == quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_USERLAND24 else _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_bind'])['ordinal']
-                            elif _name_boundary.attributes(quay_starts_3d31dbe)['pointer_format'] == _name_boundary.attributes(quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_32)['value']:
-                                quay_ordinal_05c5125 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer32_8077cdf)['generic32'])['dyld_chained_ptr_32_bind'])['ordinal']
-                            else:
-                                _name_boundary.attributes(quay_log)['error']('Unknown bind pointer format')
-                                return quay_cls_d293e50([])
-                            if quay_ordinal_05c5125 < len(quay_import_table_4f71561):
-                                quay_entry_1b684bd = quay_import_table_4f71561[quay_ordinal_05c5125]
-                                quay_target_addr_9ab40a4 = quay_mapped_cursor_c112130
-                                quay_sym_4be4c81 = _name_boundary.attributes(quay_Symbol)['from_values'](_name_boundary.attributes(quay_entry_1b684bd)['name'], quay_target_addr_9ab40a4, external=True, ordinal=quay_entry_1b684bd.ord)
-                                quay_syms_14b01a1.append(quay_sym_4be4c81)
-                                quay_rebases_07f1425[quay_mapped_cursor_c112130 + _name_boundary.attributes(_name_boundary.attributes(quay_image_f2d6319)['vm'])['vm_base_addr']] = 0
-                        else:
-                            quay_entry_offset_baee312 = 0
-                            if quay_dyld_chained_ptr_format(_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']) in [quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E, quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_KERNEL, quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_USERLAND, quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E_USERLAND24]:
-                                if _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_auth_rebase'])['auth'] == 1:
-                                    quay_entry_offset_baee312 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_auth_rebase'])['target']
-                                else:
-                                    quay_entry_offset_baee312 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_rebase'])['target']
-                                if quay_dyld_chained_ptr_format(_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']) != quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_ARM64E or _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerArm64E'])['dyld_chained_ptr_arm64e_auth_rebase'])['auth']:
-                                    quay_entry_offset_baee312 += _name_boundary.attributes(_name_boundary.attributes(quay_image_f2d6319)['vm'])['vm_base_addr']
-                            elif quay_dyld_chained_ptr_format(_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']) == quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_64:
-                                quay_entry_offset_baee312 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerGeneric64'])['dyld_chained_ptr_64_rebase'])['target']
-                            elif quay_dyld_chained_ptr_format(_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']) == quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_64_OFFSET:
-                                quay_entry_offset_baee312 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer64_02a6b25)['generic64'])['ChainedPointerGeneric64'])['dyld_chained_ptr_64_rebase'])['target'] + _name_boundary.attributes(_name_boundary.attributes(quay_image_f2d6319)['vm'])['vm_base_addr']
-                            elif quay_dyld_chained_ptr_format(_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']) == quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_32 or quay_dyld_chained_ptr_format(_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']) == quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_32_CACHE:
-                                quay_entry_offset_baee312 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer32_8077cdf)['generic32'])['dyld_chained_ptr_32_rebase'])['target']
-                            elif quay_dyld_chained_ptr_format(_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']) == quay_dyld_chained_ptr_format.DYLD_CHAINED_PTR_32_CACHE:
-                                quay_entry_offset_baee312 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_pointer32_8077cdf)['generic32'])['dyld_chained_ptr_32_firmware_rebase'])['target']
-                            else:
-                                print(f"Unknown rebase pointer format {_name_boundary.attributes(quay_starts_3d31dbe)['pointer_format']}")
-                            quay_rebases_07f1425[_name_boundary.attributes(quay_pointer64_02a6b25)['off'] + _name_boundary.attributes(_name_boundary.attributes(quay_image_f2d6319)['vm'])['vm_base_addr']] = quay_entry_offset_baee312
-                        quay_chain_entry_address_b63c0e0 += quay_next_entry_stride_count_699e44f * quay_stride_size_3891437
-                        if quay_chain_entry_address_b63c0e0 > quay_page_addr_8a818a4 + _name_boundary.attributes(quay_starts_3d31dbe)['page_size']:
-                            _name_boundary.attributes(quay_log)['error']('Pointer left page, bailing fixup processing, binary is malformed')
-                            quay_fixups_done_b5c693e = True
-                        if quay_next_entry_stride_count_699e44f == 0:
-                            quay_fixups_done_b5c693e = True
-        return quay_cls_d293e50(quay_syms_14b01a1, quay_rebases_07f1425)
-
-    @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_613ebfa', 'args': 'quay_args_c07b7c5', 'kwargs': 'quay_kwargs_f28826b'}, 'from_values')
-    def quay_from_values(quay_cls_613ebfa, *quay_args_c07b7c5, **quay_kwargs_f28826b):
-        pass
-
-    @_name_boundary.callable_contract({'self': 'quay_self_39ff616'}, 'raw_bytes')
-    def quay_raw_bytes(quay_self_39ff616):
-        pass
-
-    @_name_boundary.callable_contract({'self': 'quay_self_fb36143', 'symbols': 'quay_symbols_a10091c', 'rebases': 'quay_rebases_dd276b4'}, '__init__')
-    def __init__(quay_self_fb36143, quay_symbols_a10091c, quay_rebases_dd276b4=None):
-        if quay_rebases_dd276b4 is None:
-            quay_rebases_dd276b4 = {}
-        _name_boundary.attributes(quay_self_fb36143)['symbols'] = quay_symbols_a10091c
-        _name_boundary.attributes(quay_self_fb36143)['rebases'] = quay_rebases_dd276b4
+from imagequay.chained_reader import quay_ChainedFixups
 quay_export_node = _name_boundary.named_record('export_node', ['text', 'offset', 'flags'])
 
 @_name_boundary.class_contract('ExportNode', {'name': 'quay_name', 'offset': 'quay_offset', 'flags': 'quay_flags', 'children': 'quay_children'})
@@ -654,143 +457,5 @@ class quay_ExportTrie(quay_Constructable):
 quay_action = _name_boundary.named_record('action', ['vmaddr', 'libname', 'item'])
 quay_record = _name_boundary.named_record('record', ['off', 'seg_index', 'seg_offset', 'lib_ordinal', 'type', 'flags', 'name', 'addend', 'special_dylib'])
 
-@_name_boundary.class_contract('BindingTable', {'_load_symbol_table': 'quay__load_symbol_table', '_create_action_list': 'quay__create_action_list', '_load_binding_info': 'quay__load_binding_info', 'image': 'quay_image', 'import_stack': 'quay_import_stack', 'actions': 'quay_actions', 'lookup_table': 'quay_lookup_table', 'link_table': 'quay_link_table', 'symbol_table': 'quay_symbol_table'})
-class quay_BindingTable:
-    """
-    The binding table contains a ton of information related to the binding info in the image
-
-    .lookup_table - Contains a map of address -> Symbol declarations which should be used for processing off-image
-    symbol decorations
-
-    .symbol_table - Contains a full list of symbols declared in the binding info. Avoid iterating through this for
-    speed purposes.
-
-    .actions - contains a list of, you guessed it, actions.
-
-    .import_stack - contains a fairly raw unprocessed list of binding info commands
-
-    """
-
-    @_name_boundary.callable_contract({'self': 'quay_self_7761955', 'image': 'quay_image_b066be5', 'table_start': 'quay_table_start_6b3351e', 'table_size': 'quay_table_size_efd2cf5'}, '__init__')
-    def __init__(quay_self_7761955, quay_image_b066be5: quay_Image, quay_table_start_6b3351e: int, quay_table_size_efd2cf5: int):
-        """
-        Pass a image to be processed
-
-        :param image: image to be processed
-        :type image: Image
-        """
-        _name_boundary.attributes(quay_self_7761955)['image'] = quay_image_b066be5
-        _name_boundary.attributes(quay_self_7761955)['import_stack'] = _name_boundary.attributes(quay_self_7761955)['_load_binding_info'](quay_table_start_6b3351e, quay_table_size_efd2cf5)
-        _name_boundary.attributes(quay_self_7761955)['actions'] = _name_boundary.attributes(quay_self_7761955)['_create_action_list']()
-        _name_boundary.attributes(quay_self_7761955)['lookup_table'] = {}
-        _name_boundary.attributes(quay_self_7761955)['link_table'] = {}
-        _name_boundary.attributes(quay_self_7761955)['symbol_table'] = _name_boundary.attributes(quay_self_7761955)['_load_symbol_table']()
-
-    @_name_boundary.callable_contract({'self': 'quay_self_4fca821'}, '_load_symbol_table')
-    def quay__load_symbol_table(quay_self_4fca821) -> quay_List[quay_Symbol]:
-        quay_table_77fe244 = []
-        for quay_act_d37e14d in _name_boundary.attributes(quay_self_4fca821)['actions']:
-            if quay_act_d37e14d.item:
-                quay_sym_2dec87c = _name_boundary.attributes(quay_Symbol)['from_values'](quay_act_d37e14d.item, _name_boundary.attributes(quay_act_d37e14d)['vmaddr'], external=True, ordinal=_name_boundary.attributes(quay_act_d37e14d)['libname'])
-                quay_table_77fe244.append(quay_sym_2dec87c)
-                _name_boundary.attributes(quay_self_4fca821)['lookup_table'][_name_boundary.attributes(quay_act_d37e14d)['vmaddr']] = quay_sym_2dec87c
-        return quay_table_77fe244
-
-    @_name_boundary.callable_contract({'self': 'quay_self_1717a14'}, '_create_action_list')
-    def quay__create_action_list(quay_self_1717a14) -> quay_List[quay_action]:
-        quay_actions_2f3d4f2 = []
-        for quay_bind_command_7de67a0 in _name_boundary.attributes(quay_self_1717a14)['import_stack']:
-            quay_segment_3c573d7 = list(_name_boundary.attributes(_name_boundary.attributes(quay_self_1717a14)['image'])['segments'].values())[quay_bind_command_7de67a0.seg_index]
-            quay_vm_address_f459b83 = _name_boundary.attributes(quay_segment_3c573d7)['vm_address'] + quay_bind_command_7de67a0.seg_offset
-            try:
-                quay_lib_4fda5f3 = _name_boundary.attributes(_name_boundary.attributes(_name_boundary.attributes(quay_self_1717a14)['image'])['linked_images'][_name_boundary.attributes(quay_bind_command_7de67a0)['lib_ordinal'] - 1])['install_name']
-            except IndexError:
-                quay_lib_4fda5f3 = str(_name_boundary.attributes(quay_bind_command_7de67a0)['lib_ordinal'])
-            quay_item_cf162a0 = _name_boundary.attributes(quay_bind_command_7de67a0)['name']
-            quay_actions_2f3d4f2.append(quay_action(quay_vm_address_f459b83 & 68719476735, quay_lib_4fda5f3, quay_item_cf162a0))
-        return quay_actions_2f3d4f2
-
-    @_name_boundary.callable_contract({'self': 'quay_self_e8ee232', 'table_start': 'quay_table_start_41c98ec', 'table_size': 'quay_table_size_3469038'}, '_load_binding_info')
-    def quay__load_binding_info(quay_self_e8ee232, quay_table_start_41c98ec: int, quay_table_size_3469038: int) -> quay_List[quay_record]:
-        region = ByteRegion(_name_boundary.attributes(quay_self_e8ee232)['image'], quay_table_start_41c98ec, quay_table_size_3469038)
-        quay_read_address_8699fb3 = quay_table_start_41c98ec
-        quay_import_stack_39d98bc = []
-        quay_threaded_stack_be53686 = []
-        quay_uses_threaded_bind_6f6861d = False
-        while True:
-            region.use()
-            if quay_read_address_8699fb3 - quay_table_size_3469038 >= quay_table_start_41c98ec:
-                break
-            quay_seg_index_d15482f = 0
-            quay_seg_offset_2356fba = 0
-            quay_lib_ordinal_68c3919 = 0
-            quay_btype_ef14905 = 0
-            quay_flags_4c6901b = 0
-            quay_name_3fb5973 = ''
-            quay_addend_751bbd4 = 0
-            quay_special_dylib_2495b2d = 0
-            while True:
-                region.use()
-                quay_binding_opcode_f4e891b = region.uint(quay_read_address_8699fb3, 1) & 240
-                quay_value_aa9f27d = region.uint(quay_read_address_8699fb3, 1) & 15
-                _name_boundary.attributes(quay_log)['debug_tm'](f"{_name_boundary.attributes(quay_BINDING_OPCODE(quay_binding_opcode_f4e891b))['name']}: {hex(quay_value_aa9f27d)}")
-                quay_cmd_start_addr_5413880 = quay_read_address_8699fb3
-                quay_read_address_8699fb3 += 1
-                if _name_boundary.attributes(quay_log)['LOG_LEVEL'] == _name_boundary.attributes(quay_imagequay)['LogLevel'].DEBUG_TOO_MUCH:
-                    quay_segment_8f2935e = list(_name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['segments'].values())[quay_seg_index_d15482f]
-                    quay_vm_address_c371d36 = _name_boundary.attributes(quay_segment_8f2935e)['vm_address'] + quay_seg_offset_2356fba
-                    _name_boundary.attributes(quay_log)['debug_tm'](f"@ {hex(quay_cmd_start_addr_5413880)} (-> {hex(quay_vm_address_c371d36)}) op->{_name_boundary.attributes(quay_BINDING_OPCODE(quay_binding_opcode_f4e891b))['name']} current->{quay_name_3fb5973}")
-                if quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.THREADED:
-                    if quay_value_aa9f27d == quay_BIND_SUBOPCODE_THREADED_SET_BIND_ORDINAL_TABLE_SIZE_ULEB:
-                        quay_a_table_size_b501e92, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
-                        quay_uses_threaded_bind_6f6861d = True
-                    elif quay_value_aa9f27d == quay_BIND_SUBOPCODE_THREADED_APPLY:
-                        pass
-                if quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.DONE:
-                    quay_import_stack_39d98bc.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
-                    break
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_DYLIB_ORDINAL_IMM:
-                    quay_lib_ordinal_68c3919 = quay_value_aa9f27d
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_DYLIB_ORDINAL_ULEB:
-                    quay_lib_ordinal_68c3919, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_DYLIB_SPECIAL_IMM:
-                    quay_special_dylib_2495b2d = 1
-                    quay_lib_ordinal_68c3919 = quay_value_aa9f27d
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_SYMBOL_TRAILING_FLAGS_IMM:
-                    quay_flags_4c6901b = quay_value_aa9f27d
-                    quay_name_3fb5973 = region.cstring(quay_read_address_8699fb3)[0]
-                    quay_read_address_8699fb3 += len(quay_name_3fb5973.encode('utf-8')) + 1
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_TYPE_IMM:
-                    quay_btype_ef14905 = quay_value_aa9f27d
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_ADDEND_SLEB:
-                    quay_addend_751bbd4, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3, signed=True)
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.SET_SEGMENT_AND_OFFSET_ULEB:
-                    quay_seg_index_d15482f = quay_value_aa9f27d
-                    quay_seg_offset_2356fba, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.ADD_ADDR_ULEB:
-                    quay_o_b97edfd, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
-                    quay_seg_offset_2356fba += quay_o_b97edfd
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.DO_BIND_ADD_ADDR_ULEB:
-                    quay_import_stack_39d98bc.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
-                    quay_seg_offset_2356fba += _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size']
-                    quay_o_b97edfd, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
-                    quay_seg_offset_2356fba += quay_o_b97edfd
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.DO_BIND_ADD_ADDR_IMM_SCALED:
-                    quay_import_stack_39d98bc.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
-                    quay_seg_offset_2356fba = quay_seg_offset_2356fba + quay_value_aa9f27d * _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size'] + _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size']
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.DO_BIND_ULEB_TIMES_SKIPPING_ULEB:
-                    quay_count_1221439, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
-                    quay_skip_611aa0e, quay_read_address_8699fb3 = region.leb(quay_read_address_8699fb3)
-                    region.use(quay_count_1221439)
-                    for quay_i_89c187e in range(0, quay_count_1221439):
-                        quay_import_stack_39d98bc.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
-                        quay_seg_offset_2356fba += quay_skip_611aa0e + _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size']
-                elif quay_binding_opcode_f4e891b == quay_BINDING_OPCODE.DO_BIND:
-                    if not quay_uses_threaded_bind_6f6861d:
-                        quay_import_stack_39d98bc.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
-                        quay_seg_offset_2356fba += _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size']
-                    else:
-                        quay_threaded_stack_be53686.append(quay_record(quay_cmd_start_addr_5413880, quay_seg_index_d15482f, quay_seg_offset_2356fba, quay_lib_ordinal_68c3919, quay_btype_ef14905, quay_flags_4c6901b, quay_name_3fb5973, quay_addend_751bbd4, quay_special_dylib_2495b2d))
-                        quay_seg_offset_2356fba += _name_boundary.attributes(_name_boundary.attributes(quay_self_e8ee232)['image'])['ptr_size']
-        return quay_import_stack_39d98bc
+from imagequay.binding_reader import quay_BindingTable, quay_action, quay_record
 _name_boundary.module_contract(globals(), {'action': 'quay_action', 'MH_MAGIC_64': 'quay_MH_MAGIC_64', 'macho_is_malformed': 'quay_macho_is_malformed', 'ExportTrie': 'quay_ExportTrie', 'CPUType': 'quay_CPUType', 'CodesignInfo': 'quay_CodesignInfo', 'Image': 'quay_Image', 'Tuple': 'quay_Tuple', 'ExportNode': 'quay_ExportNode', 'MH_FLAGS': 'quay_MH_FLAGS', 'Union': 'quay_Union', 'ignore': 'quay_ignore', 'MachOImageLoader': 'quay_MachOImageLoader', 'MachOImageHeader': 'quay_MachOImageHeader', 'ChainedFixups': 'quay_ChainedFixups', 'namedtuple': 'quay_namedtuple', 'PlatformType': 'quay_PlatformType', 'BIND_SUBOPCODE_THREADED_SET_BIND_ORDINAL_TABLE_SIZE_ULEB': 'quay_BIND_SUBOPCODE_THREADED_SET_BIND_ORDINAL_TABLE_SIZE_ULEB', 'MisalignedVM': 'quay_MisalignedVM', 'BindingTable': 'quay_BindingTable', 'export_node': 'quay_export_node', 'LOAD_COMMAND': 'quay_LOAD_COMMAND', 'BINDING_OPCODE': 'quay_BINDING_OPCODE', 'BIND_SUBOPCODE_THREADED_APPLY': 'quay_BIND_SUBOPCODE_THREADED_APPLY', 'Constructable': 'quay_Constructable', 'ktool': 'quay_imagequay', 'SymbolTable': 'quay_SymbolTable', 'Slice': 'quay_Slice', 'record': 'quay_record', 'SymbolType': 'quay_SymbolType', 'Optional': 'quay_Optional', 'LOAD_COMMAND_MAP': 'quay_LOAD_COMMAND_MAP', 'List': 'quay_List', 'LinkedImage': 'quay_LinkedImage', 'CPUSubTypeARM64': 'quay_CPUSubTypeARM64', 'Dict': 'quay_Dict', 'Segment': 'quay_Segment', 'MachOAlignmentError': 'quay_MachOAlignmentError', 'Symbol': 'quay_Symbol', 'MH_FILETYPE': 'quay_MH_FILETYPE', 'os_version': 'quay_os_version', 'bytes_to_hex': 'quay_bytes_to_hex', 'MH_MAGIC': 'quay_MH_MAGIC', 'log': 'quay_log'})

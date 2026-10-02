@@ -1,505 +1,493 @@
-# Derived from src/lib0cyn/structs.py; original copyright and license in ORIGIN.md and LICENSE.
-#
-#  ktool | lib0cyn
-#  structs.py
-#
-#  Custom Struct implementation reflecting behavior of named tuples while also handling behind-the-scenes
-#    packing/unpacking
-#
-#  This file is part of ktool. ktool is free software that
-#  is made available under the MIT license. Consult the
-#  file "LICENSE" that is distributed together with this file
-#  for the exact licensing terms.
-#
-#  Copyright (c) 0cyn 2022.
-#
-import imagequay_boundary as _name_boundary
-from typing import List as quay_List
-import inspect as quay_inspect
-import enum as quay_enum
-import re as quay_re
-quay_ansi_escape = quay_re.compile('(?:\\x1B[@-_]|[\\x80-\\x9F])[0-?]*[ -/]*[@-~]')
+# Derived API from ktool/lib0cyn; Copyright (c) 0cyn 2022, MIT in LICENSE.
+# Packing, layout validation and instance state rewritten for ImageQuay.
+"""Finite record layouts with exact decoding and symmetric field encoding.
 
-@_name_boundary.callable_contract({'msg': 'quay_msg_0c5770d'}, 'strip_ansi')
-def quay_strip_ansi(quay_msg_0c5770d):
-    return quay_ansi_escape.sub('', quay_msg_0c5770d)
-quay_type_mask = 4294901760
-quay_size_mask = 65535
-quay_type_uint = 0
-quay_type_sint = 65536
-quay_type_str = 131072
-quay_type_bytes = 196608
-quay_uint8_t = 1
-quay_uint16_t = 2
-quay_uint32_t = 4
-quay_uint64_t = 8
-quay_int8_t = quay_type_sint | 1
-quay_int16_t = quay_type_sint | 2
-quay_int32_t = quay_type_sint | 4
-quay_int64_t = quay_type_sint | 8
-quay_char_t = [quay_type_str | quay_i_212a498 for quay_i_212a498 in range(65)]
-quay_bytes_t = [quay_type_bytes | quay_i_5dae815 for quay_i_5dae815 in range(65)]
+Schemas describe bytes; they do not hold decoded state. Each instance owns its
+bitfields. Nested records inherit byte order and pointer width. Invalid schemas,
+short data and values outside a field raise exceptions without terminating the
+calling process. Compatibility spellings remain at the public name boundary.
+"""
+import enum as quay_enum
+import inspect as quay_inspect
+import re as quay_re
+from typing import List as quay_List
+from types import MappingProxyType
+import imagequay_boundary as _name_boundary
+
+quay_ansi_escape = quay_re.compile(r'(?:\x1B[@-_]|[\x80-\x9F])[0-?]*[ -/]*[@-~]')
+quay_type_mask, quay_size_mask = 0xFFFF0000, 0xFFFF
+quay_type_uint, quay_type_sint, quay_type_str, quay_type_bytes = 0, 0x10000, 0x20000, 0x30000
+quay_uint8_t, quay_uint16_t, quay_uint32_t, quay_uint64_t = 1, 2, 4, 8
+quay_int8_t, quay_int16_t, quay_int32_t, quay_int64_t = [quay_type_sint | n for n in (1, 2, 4, 8)]
+quay_char_t = [quay_type_str | n for n in range(65)]
+quay_bytes_t = [quay_type_bytes | n for n in range(65)]
+MAX_RECORD_BYTES = 1 << 20
+MAX_RECORD_FIELDS = 4096
+MAX_RECORD_DEPTH = 64
+
+
+def quay_strip_ansi(msg):
+    return quay_ansi_escape.sub('', msg)
+
+
+def _order(byte_order):
+    if byte_order not in ('little', 'big'):
+        raise ValueError('byte_order must be little or big')
+    return byte_order
+
+
+def _pointer_size(ptr_size):
+    if type(ptr_size) is not int or ptr_size not in (4, 8):
+        raise ValueError('pointer width must be 4 or 8 bytes')
+    return ptr_size
+
+
+def _width(size):
+    if type(size) is not int or not 0 <= size <= MAX_RECORD_BYTES:
+        raise ValueError('record width exceeds the 1 MiB budget')
+    return size
+
 
 @_name_boundary.class_contract('uintptr_t', {})
 class quay_uintptr_t:
-    pass
+    """Pointer-width unsigned field marker."""
+
 
 @_name_boundary.class_contract('pad_for_64_bit_only', {'size': 'quay_size'})
 class quay_pad_for_64_bit_only:
-    """ Sometimes, arm64/x64 variations of structures may differ from 32 bit ones only in variables to pad
-        things out for the sake of byte-aligned reads. This allows us to account for that without having to make
-        a separate 64 and 32 bit struct.
+    def __init__(self, size=4):
+        self.size = _width(size)
 
-        This acts as a variable length field, and will have a size of 0 if ptr_size passed to struct code isn't 8
-    """
 
-    @_name_boundary.callable_contract({'self': 'quay_self_ee45ec3', 'size': 'quay_size_b6840d6'}, '__init__')
-    def __init__(quay_self_ee45ec3, quay_size_b6840d6=4):
-        _name_boundary.attributes(quay_self_ee45ec3)['size'] = quay_size_b6840d6
-
-@_name_boundary.class_contract('Bitfield', {'decode_bitfield': 'quay_decode_bitfield', 'CodesignInfo': 'quay_CodesignInfo', 'from_image': 'quay_from_image', 'from_values': 'quay_from_values', 'raw_bytes': 'quay_raw_bytes', 'superblob': 'quay_superblob', 'slots': 'quay_slots', 'entitlements': 'quay_entitlements', 'req_dat': 'quay_req_dat', 'MalformedMachOException': 'quay_MalformedMachOException', 'MachOAlignmentError': 'quay_MachOAlignmentError', 'VMAddressingError': 'quay_VMAddressingError', 'UnsupportedFiletypeException': 'quay_UnsupportedFiletypeException', 'NoObjCMetadataException': 'quay_NoObjCMetadataException', 'TBDGenerator': 'quay_TBDGenerator', '_generate_dict': 'quay__generate_dict', 'FatMachOGenerator': 'quay_FatMachOGenerator', '_fat_arch_for_slice': 'quay__fat_arch_for_slice', 'image': 'quay_image', 'objc_lib': 'quay_objc_lib', 'general': 'quay_general', 'dict': 'quay_dict', 'slices': 'quay_slices', 'fat_archs': 'quay_fat_archs', 'fat_head': 'quay_fat_head', 'HeaderUtils': 'quay_HeaderUtils', 'header_head_html': 'quay_header_head_html', 'header_head': 'quay_header_head', 'TypeResolver': 'quay_TypeResolver', 'find_linked': 'quay_find_linked', 'HeaderGenerator': 'quay_HeaderGenerator', 'StructHeader': 'quay_StructHeader', 'Header': 'quay_Header', 'generate_highlighted_text': 'quay_generate_highlighted_text', 'generate_html': 'quay_generate_html', '_generate_text': 'quay__generate_text', '_process_import_section': 'quay__process_import_section', 'CategoryHeader': 'quay_CategoryHeader', 'ProtocolHeader': 'quay_ProtocolHeader', 'Interface': 'quay_Interface', '_process_properties': 'quay__process_properties', '_process_ivars': 'quay__process_ivars', '_process_methods': 'quay__process_methods', 'StructDef': 'quay_StructDef', 'CategoryInterface': 'quay_CategoryInterface', 'ProtocolInterface': 'quay_ProtocolInterface', 'UmbrellaHeader': 'quay_UmbrellaHeader', 'objc_image': 'quay_objc_image', 'classmap': 'quay_classmap', 'classes': 'quay_classes', 'local_classes': 'quay_local_classes', 'local_protos': 'quay_local_protos', '_linked_cache': 'quay__linked_cache', 'type_resolver': 'quay_type_resolver', 'headers': 'quay_headers', 'text': 'quay_text', 'interface': 'quay_interface', 'objc_class': 'quay_objc_class', 'forward_declare_private_imports': 'quay_forward_declare_private_imports', 'forward_declaration_classes': 'quay_forward_declaration_classes', 'forward_declaration_protocols': 'quay_forward_declaration_protocols', 'imported_classes': 'quay_imported_classes', 'locally_imported_classes': 'quay_locally_imported_classes', 'locally_imported_protocols': 'quay_locally_imported_protocols', 'highlighted_text': 'quay_highlighted_text', 'category': 'quay_category', 'properties': 'quay_properties', 'methods': 'quay_methods', 'protocols': 'quay_protocols', 'protocol': 'quay_protocol', 'ivars': 'quay_ivars', 'structs': 'quay_structs', 'getters': 'quay_getters', 'setters': 'quay_setters', 'struct_definition': 'quay_struct_definition', 'VM': 'quay_VM', 'vm_check': 'quay_vm_check', 'add_segment': 'quay_add_segment', 'translate': 'quay_translate', 'de_translate': 'quay_de_translate', 'map_pages': 'quay_map_pages', 'MisalignedVM': 'quay_MisalignedVM', 'LinkedImage': 'quay_LinkedImage', 'serialize': 'quay_serialize', '_get_name': 'quay__get_name', 'Image': 'quay_Image', 'vm_realign': 'quay_vm_realign', 'read_uint': 'quay_read_uint', 'read_ptr': 'quay_read_ptr', 'read_int': 'quay_read_int', 'read_bytearray': 'quay_read_bytearray', 'read_struct': 'quay_read_struct', 'read_fixed_len_str': 'quay_read_fixed_len_str', 'read_cstr': 'quay_read_cstr', 'read_uleb128': 'quay_read_uleb128', 'page_size': 'quay_page_size', 'page_size_bits': 'quay_page_size_bits', 'page_table': 'quay_page_table', 'tlb': 'quay_tlb', 'segs': 'quay_segs', 'vm_base_addr': 'quay_vm_base_addr', 'dirty': 'quay_dirty', 'fallback': 'quay_fallback', 'detag_kern_64': 'quay_detag_kern_64', 'detag_64': 'quay_detag_64', 'map': 'quay_map', 'stats': 'quay_stats', 'sorted_map': 'quay_sorted_map', 'cache': 'quay_cache', 'cmd': 'quay_cmd', 'source_image': 'quay_source_image', 'install_name': 'quay_install_name', 'weak': 'quay_weak', 'local': 'quay_local', 'slice': 'quay_slice', 'vm': 'quay_vm', 'base_name': 'quay_base_name', 'linked_images': 'quay_linked_images', 'segments': 'quay_segments', 'info': 'quay_info', 'dylib': 'quay_dylib', 'uuid': 'quay_uuid', 'codesign_info': 'quay_codesign_info', '_codesign_cmd': 'quay__codesign_cmd', 'platform': 'quay_platform', 'allowed_clients': 'quay_allowed_clients', 'rpath': 'quay_rpath', 'minos': 'quay_minos', 'sdk_version': 'quay_sdk_version', 'imports': 'quay_imports', 'exports': 'quay_exports', 'symbols': 'quay_symbols', 'import_table': 'quay_import_table', 'export_table': 'quay_export_table', 'entry_point': 'quay_entry_point', 'function_starts': 'quay_function_starts', 'thread_state': 'quay_thread_state', '_entry_off': 'quay__entry_off', 'binding_table': 'quay_binding_table', 'weak_binding_table': 'quay_weak_binding_table', 'lazy_binding_table': 'quay_lazy_binding_table', 'export_trie': 'quay_export_trie', 'chained_fixups': 'quay_chained_fixups', 'symbol_table': 'quay_symbol_table', 'struct_cache': 'quay_struct_cache', 'macho_header': 'quay_macho_header', 'ptr_size': 'quay_ptr_size', 'kmod_info_64': 'quay_kmod_info_64', '_FIELDNAMES': 'quay__FIELDNAMES', '_SIZES': 'quay__SIZES', 'SIZE': 'quay_SIZE', 'Kext': 'quay_Kext', 'EmbeddedKext': 'quay_EmbeddedKext', 'MergedKext': 'quay_MergedKext', 'KernelCache': 'quay_KernelCache', '_process_kexts_from_prelink_info': 'quay__process_kexts_from_prelink_info', '_process_kexts': 'quay__process_kexts', '_process_prelink_info': 'quay__process_prelink_info', '_process_merged_kexts': 'quay__process_merged_kexts', 'next_addr': 'quay_next_addr', 'info_version': 'quay_info_version', 'id': 'quay_id', 'name': 'quay_name', 'version': 'quay_version', 'reference_count': 'quay_reference_count', 'reference_list_addr': 'quay_reference_list_addr', 'address': 'quay_address', 'size': 'quay_size', 'hdr_size': 'quay_hdr_size', 'start_addr': 'quay_start_addr', 'stop_addr': 'quay_stop_addr', 'prelink_info': 'quay_prelink_info', 'development_region': 'quay_development_region', 'executable_name': 'quay_executable_name', 'bundle_name': 'quay_bundle_name', 'package_type': 'quay_package_type', 'info_string': 'quay_info_string', 'version_str': 'quay_version_str', 'backing_file': 'quay_backing_file', 'backing_image': 'quay_backing_image', 'backing_slice': 'quay_backing_slice', 'mach_header': 'quay_mach_header', 'mach_kernel_file': 'quay_mach_kernel_file', 'mach_kernel': 'quay_mach_kernel', 'kexts': 'quay_kexts', 'release_type': 'quay_release_type', 'arch': 'quay_arch', 'soc': 'quay_soc', 'KToolError': 'quay_ImageQuayError', 'MachOFileCommands': 'quay_MachOFileCommands', '_open': 'quay__open', 'ent': 'quay_ent', 'insert': 'quay_insert', 'edit': 'quay_edit', 'lipo': 'quay_lipo', '_list': 'quay__list', 'dump': 'quay_dump', 'kcache': 'quay_kcache', 'trie_unwrap': 'quay_trie_unwrap', 'MachOImageLoader': 'quay_MachOImageLoader', 'SYMTAB_LOADER': 'quay_SYMTAB_LOADER', 'load': 'quay_load', '_parse_load_commands': 'quay__parse_load_commands', '_process_image': 'quay__process_image', 'SymbolType': 'quay_SymbolType', 'Symbol': 'quay_Symbol', 'SymbolTable': 'quay_SymbolTable', '_load_symbol_table': 'quay__load_symbol_table', 'ChainedFixups': 'quay_ChainedFixups', 'ExportNode': 'quay_ExportNode', 'ExportTrie': 'quay_ExportTrie', '_read_node_tree_iter': 'quay__read_node_tree_iter', 'print_tree': 'quay_print_tree', 'BindingTable': 'quay_BindingTable', '_create_action_list': 'quay__create_action_list', '_load_binding_info': 'quay__load_binding_info', 'fullname': 'quay_fullname', 'dec_type': 'quay_dec_type', 'entry': 'quay_entry', 'ordinal': 'quay_ordinal', 'types': 'quay_types', 'external': 'quay_external', 'attr': 'quay_attr', 'ext': 'quay_ext', 'table': 'quay_table', 'rebases': 'quay_rebases', 'offset': 'quay_offset', 'flags': 'quay_flags', 'children': 'quay_children', 'raw': 'quay_raw', 'nodes': 'quay_nodes', 'root': 'quay_root', 'import_stack': 'quay_import_stack', 'actions': 'quay_actions', 'lookup_table': 'quay_lookup_table', 'link_table': 'quay_link_table', 'MachOFileType': 'quay_MachOFileType', 'BackingFile': 'quay_BackingFile', 'read_bytes': 'quay_read_bytes', 'write': 'quay_write', 'close': 'quay_close', 'SlicedBackingFile': 'quay_SlicedBackingFile', 'MachOFile': 'quay_MachOFile', '_load_struct': 'quay__load_struct', 'Section': 'quay_Section', 'SectionIterator': 'quay_SectionIterator', 'Segment': 'quay_Segment', '_process_sections': 'quay__process_sections', 'Slice': 'quay_Slice', 'patch': 'quay_patch', 'full_bytes_for_slice': 'quay_full_bytes_for_slice', 'find': 'quay_find', '_load_type': 'quay__load_type', '_load_subtype': 'quay__load_subtype', 'MachOImageHeader': 'quay_MachOImageHeader', 'MachOLoadCommandIterator': 'quay_MachOLoadCommandIterator', 'insert_load_command': 'quay_insert_load_command', 'remove_load_command': 'quay_remove_load_command', 'replace_load_command': 'quay_replace_load_command', 'PlatformType': 'quay_PlatformType', 'ToolType': 'quay_ToolType', 'fp': 'quay_fp', 'file': 'quay_file', 'file_object': 'quay_file_object', 'uses_mmaped_io': 'quay_uses_mmaped_io', 'magic': 'quay_magic', 'segment': 'quay_segment', 'vm_address': 'quay_vm_address', 'file_address': 'quay_file_address', 'is64': 'quay_is64', 'file_size': 'quay_file_size', 'sections': 'quay_sections', 'type': 'quay_type', 'macho_file': 'quay_macho_file', 'arch_struct': 'quay_arch_struct', 'byte_order': 'quay_byte_order', '_cstring_cache': 'quay__cstring_cache', 'dyld_header': 'quay_dyld_header', 'filetype': 'quay_filetype', 'load_commands': 'quay_load_commands', 'filename': 'quay_filename', 'header': 'quay_header', 'start': 'quay_start', 'end': 'quay_end', 'pos': 'quay_pos', 'subtype': 'quay_subtype', 'hdr': 'quay_hdr', 'ObjCImage': 'quay_ObjCImage', 'Struct_Representation': 'quay_Struct_Representation', 'EncodingType': 'quay_EncodingType', 'EncodedType': 'quay_EncodedType', 'Type': 'quay_Type', 'TypeProcessor': 'quay_TypeProcessor', 'save_struct': 'quay_save_struct', 'process': 'quay_process', 'tokenize': 'quay_tokenize', 'Ivar': 'quay_Ivar', '_renderable_type': 'quay__renderable_type', 'MethodList': 'quay_MethodList', 'CUSTOM_RMS_BASE': 'quay_CUSTOM_RMS_BASE', '_process_methlist': 'quay__process_methlist', 'Method': 'quay_Method', '_build_method_signature': 'quay__build_method_signature', 'LinkedClass': 'quay_LinkedClass', 'Class': 'quay_Class', '_load_linked_libraries': 'quay__load_linked_libraries', 'Property': 'quay_Property', 'decode_property_attributes': 'quay_decode_property_attributes', 'Category': 'quay_Category', 'Protocol': 'quay_Protocol', 'load_methods': 'quay_load_methods', 'tp': 'quay_tp', 'classlist': 'quay_classlist', 'catlist': 'quay_catlist', 'protolist': 'quay_protolist', 'class_map': 'quay_class_map', 'cat_map': 'quay_cat_map', 'prot_map': 'quay_prot_map', 'field_names': 'quay_field_names', 'fields': 'quay_fields', 'child': 'quay_child', 'pointer_count': 'quay_pointer_count', 'type_cache': 'quay_type_cache', 'typestr': 'quay_typestr', 'is_id': 'quay_is_id', 'methlist_head': 'quay_methlist_head', 'meta': 'quay_meta', 'load_errors': 'quay_load_errors', 'struct_list': 'quay_struct_list', 'sel': 'quay_sel', 'type_string': 'quay_type_string', 'imp': 'quay_imp', 'signature': 'quay_signature', 'classname': 'quay_classname', 'libname': 'quay_libname', 'superclass': 'quay_superclass', 'loc': 'quay_loc', 'linkedlibs': 'quay_linkedlibs', 'linked_classes': 'quay_linked_classes', 'fdec_classes': 'quay_fdec_classes', 'fdec_prots': 'quay_fdec_prots', 'opt_methods': 'quay_opt_methods', 'value': 'quay_value', 'return_string': 'quay_return_string', 'arguments': 'quay_arguments', 'attr_string': 'quay_attr_string', 'attributes': 'quay_attributes', 'ivarname': 'quay_ivarname', 'getter': 'quay_getter', 'setter': 'quay_setter', 'objc2_class': 'quay_objc2_class', 'FIELDS': 'quay_FIELDS', 'objc2_class_ro': 'quay_objc2_class_ro', 'objc2_meth': 'quay_objc2_meth', 'objc2_meth_list_entry': 'quay_objc2_meth_list_entry', 'objc2_meth_list': 'quay_objc2_meth_list', 'objc2_prop_list': 'quay_objc2_prop_list', 'objc2_prop': 'quay_objc2_prop', 'objc2_prot_list': 'quay_objc2_prot_list', 'objc2_prot': 'quay_objc2_prot', 'objc2_ivar_list': 'quay_objc2_ivar_list', 'objc2_ivar': 'quay_objc2_ivar', 'objc2_category': 'quay_objc2_category', 'isa': 'quay_isa', 'vtable': 'quay_vtable', 'ivar_base_start': 'quay_ivar_base_start', 'ivar_base_size': 'quay_ivar_base_size', 'reserved': 'quay_reserved', 'ivar_lyt': 'quay_ivar_lyt', 'base_meths': 'quay_base_meths', 'base_prots': 'quay_base_prots', 'weak_ivar_lyt': 'quay_weak_ivar_lyt', 'base_props': 'quay_base_props', 'selector': 'quay_selector', 'entrysize': 'quay_entrysize', 'count': 'quay_count', 'cnt': 'quay_cnt', 'prots': 'quay_prots', 'inst_meths': 'quay_inst_meths', 'class_meths': 'quay_class_meths', 'opt_inst_meths': 'quay_opt_inst_meths', 'opt_class_meths': 'quay_opt_class_meths', 'inst_props': 'quay_inst_props', 'cb': 'quay_cb', 'offs': 'quay_offs', 'align': 'quay_align', 's_class': 'quay_s_class', 'props': 'quay_props', 'Field': 'quay_Field', '_FieldDescriptor': 'quay__FieldDescriptor', 'SwiftStruct': 'quay_SwiftStruct', 'SwiftClass': 'quay_SwiftClass', 'SwiftEnum': 'quay_SwiftEnum', 'SwiftType': 'quay_SwiftType', 'SwiftImage': 'quay_SwiftImage', 'type_name': 'quay_type_name', 'desc': 'quay_desc', 'field_desc': 'quay_field_desc', 'class_desc': 'quay_class_desc', 'kind': 'quay_kind', 'typedesc': 'quay_typedesc', 'ignore': 'quay_ignore', 'MALFORMED': 'quay_MALFORMED', 'OBJC_ERRORS': 'quay_OBJC_ERRORS', 'opts': 'quay_opts', 'DISABLE_COLOR': 'quay_DISABLE_COLOR', 'USE_SYMTAB_INSTEAD_OF_SELECTORS': 'quay_USE_SYMTAB_INSTEAD_OF_SELECTORS', 'OBJC_LOAD_ERRORS_SEND_TO_DEBUG': 'quay_OBJC_LOAD_ERRORS_SEND_TO_DEBUG', 'QueueItem': 'quay_QueueItem', 'Queue': 'quay_Queue', 'process_item': 'quay_process_item', 'go': 'quay_go', 'FileType': 'quay_FileType', 'TapiYAMLWriter': 'quay_TapiYAMLWriter', 'write_out': 'quay_write_out', 'serialize_export_arch': 'quay_serialize_export_arch', 'serialize_list': 'quay_serialize_list', 'Table': 'quay_Table', 'preheat': 'quay_preheat', 'fetch_all': 'quay_fetch_all', 'fetch': 'quay_fetch', 'render': 'quay_render', 'args': 'quay_args', 'func': 'quay_func', 'items': 'quay_items', 'returns': 'quay_returns', 'multithread': 'quay_multithread', 'titles': 'quay_titles', 'rows': 'quay_rows', 'size_pinned_columns': 'quay_size_pinned_columns', 'dividers': 'quay_dividers', 'avoid_wrapping_titles': 'quay_avoid_wrapping_titles', 'ansi_borders': 'quay_ansi_borders', 'column_pad': 'quay_column_pad', 'column_maxes': 'quay_column_maxes', 'most_recent_adjusted_maxes': 'quay_most_recent_adjusted_maxes', 'rendered_row_cache': 'quay_rendered_row_cache', 'header_cache': 'quay_header_cache', 'ColorRep': 'quay_ColorRep', 'get_attr': 'quay_get_attr', 'Attribute': 'quay_Attribute', 'HIGHLIGHTED': 'quay_HIGHLIGHTED', 'UNDERLINED': 'quay_UNDERLINED', 'COLOR_1': 'quay_COLOR_1', 'COLOR_2': 'quay_COLOR_2', 'COLOR_3': 'quay_COLOR_3', 'COLOR_4': 'quay_COLOR_4', 'COLOR_5': 'quay_COLOR_5', 'COLOR_6': 'quay_COLOR_6', 'COLOR_7': 'quay_COLOR_7', 'AttributedString': 'quay_AttributedString', 'ansi_to_attrstr': 'quay_ansi_to_attrstr', 'fix_256_code': 'quay_fix_256_code', 'set_attr': 'quay_set_attr', 'ExitProgramException': 'quay_ExitProgramException', 'RebuildAllException': 'quay_RebuildAllException', 'PresentDebugMenuException': 'quay_PresentDebugMenuException', 'PresentTitleMenuException': 'quay_PresentTitleMenuException', 'FileBrowserOpenNewFileException': 'quay_FileBrowserOpenNewFileException', 'HelpMenuException': 'quay_HelpMenuException', 'DestroyTitleMenuException': 'quay_DestroyTitleMenuException', 'PanicException': 'quay_PanicException', 'HexDumpTable': 'quay_HexDumpTable', 'LazilyProcessedTextBuffer': 'quay_LazilyProcessedTextBuffer', 'RootBox': 'quay_RootBox', 'coord_translate': 'quay_coord_translate', 'Box': 'quay_Box', 'is_click_inbounds': 'quay_is_click_inbounds', 'ScrollingDisplayBuffer': 'quay_ScrollingDisplayBuffer', 'find_clean_breakpoint': 'quay_find_clean_breakpoint', 'process_lines': 'quay_process_lines', 'draw_lines': 'quay_draw_lines', 'rendered_lines_from': 'quay_rendered_lines_from', 'View': 'quay_View', 'add_subview': 'quay_add_subview', 'redraw': 'quay_redraw', 'handle_key_press': 'quay_handle_key_press', 'handle_mouse': 'quay_handle_mouse', 'ScrollView': 'quay_ScrollView', 'Button': 'quay_Button', 'set_text': 'quay_set_text', 'action': 'quay_action', 'TitleBarMenuItem': 'quay_TitleBarMenuItem', 'HelpMenuItem': 'quay_HelpMenuItem', 'function': 'quay_function', 'FileMenuItem': 'quay_FileMenuItem', 'open': 'quay_open', 'save': 'quay_save', 'EditMenuItem': 'quay_EditMenuItem', 'delete': 'quay_delete', 'DumpMenuItem': 'quay_DumpMenuItem', 'tbd': 'quay_tbd', 'TitleBar': 'quay_TitleBar', 'MENUS_START': 'quay_MENUS_START', 'exit': 'quay_exit', 'add_menu_item': 'quay_add_menu_item', 'FooterBar': 'quay_FooterBar', 'SidebarMenuItem': 'quay_SidebarMenuItem', 'parse_mmc': 'quay_parse_mmc', 'item_list_with_children': 'quay_item_list_with_children', 'Sidebar': 'quay_Sidebar', 'WIDTH': 'quay_WIDTH', 'select_item': 'quay_select_item', 'update_item_listing': 'quay_update_item_listing', 'collapse_index': 'quay_collapse_index', 'MainMenuContentItem': 'quay_MainMenuContentItem', 'MainScreen': 'quay_MainScreen', 'set_tab_name': 'quay_set_tab_name', 'DebugMenu': 'quay_DebugMenu', 'parse_lines': 'quay_parse_lines', 'HelpMenu': 'quay_HelpMenu', 'LoaderStatusView': 'quay_LoaderStatusView', 'UserInputPrompt': 'quay_UserInputPrompt', 'MenuOverlayRenderingView': 'quay_MenuOverlayRenderingView', 'FileSystemBrowserOverlayView': 'quay_FileSystemBrowserOverlayView', 'KToolMachOLoader': 'quay_ImageQuayMachOLoader', 'SUPPORTS_256': 'quay_SUPPORTS_256', 'SUPPORTS_COLOR': 'quay_SUPPORTS_COLOR', 'HARD_FAIL': 'quay_HARD_FAIL', 'CUR_SL': 'quay_CUR_SL', 'SL_CNT': 'quay_SL_CNT', 'parent_count': 'quay_parent_count', 'contents_for_file': 'quay_contents_for_file', 'contents_for_image': 'quay_contents_for_image', 'slice_item': 'quay_slice_item', '_file': 'quay__file', 'linked': 'quay_linked', 'codesign': 'quay_codesign', 'load_cmds': 'quay_load_cmds', 'symtab': 'quay_symtab', 'vm_map': 'quay_vm_map', 'objc_items': 'quay_objc_items', 'swift_items': 'quay_swift_items', 'swift_types': 'quay_swift_types', 'get_header_item': 'quay_get_header_item', 'get_header_text': 'quay_get_header_text', 'objc_headers': 'quay_objc_headers', 'KToolKernelCacheLoader': 'quay_ImageQuayKernelCacheLoader', 'get_kexts': 'quay_get_kexts', 'KToolScreen': 'quay_ImageQuayScreen', 'ktool_dbg_print_func': 'quay_imagequay_dbg_print_func', 'ktool_dbg_print_err_func': 'quay_imagequay_dbg_print_err_func', 'setup': 'quay_setup', 'teardown': 'quay_teardown', 'update_mainscreen_text': 'quay_update_mainscreen_text', 'update_load_status': 'quay_update_load_status', 'load_image': 'quay_load_image', 'load_file': 'quay_load_file', 'rebuild_all': 'quay_rebuild_all', 'redraw_all': 'quay_redraw_all', 'handle_present_menu_exception': 'quay_handle_present_menu_exception', 'program_loop': 'quay_program_loop', 'n': 'quay_n', 'string': 'quay_string', 'attrs': 'quay_attrs', 'hex': 'quay_hex', 'lines': 'quay_lines', 'processed': 'quay_processed', 'target': 'quay_target', 'target_args': 'quay_target_args', 'stdscr': 'quay_stdscr', 'parent': 'quay_parent', 'x': 'quay_x', 'y': 'quay_y', 'width': 'quay_width', 'height': 'quay_height', 'box': 'quay_box', 'scrollcursor': 'quay_scrollcursor', 'render_attr': 'quay_render_attr', 'processed_lines': 'quay_processed_lines', 'pinned_lines': 'quay_pinned_lines', 'wrap': 'quay_wrap', 'clean_wrap': 'quay_clean_wrap', 'filled_line_count': 'quay_filled_line_count', 'draw': 'quay_draw', 'scroll_view': 'quay_scroll_view', 'scroll_view_text_buffer': 'quay_scroll_view_text_buffer', 'scroll_cursor': 'quay_scroll_cursor', 'rend_text': 'quay_rend_text', 'rend_width': 'quay_rend_width', 'menu_items': 'quay_menu_items', 'menu_item_xy_map': 'quay_menu_item_xy_map', 'pres_menu_item': 'quay_pres_menu_item', 'pres_menu_item_index': 'quay_pres_menu_item_index', 'exit_button': 'quay_exit_button', 'show_debug': 'quay_show_debug', 'debug_text': 'quay_debug_text', 'hi_text': 'quay_hi_text', 'now': 'quay_now', 'rend_name': 'quay_rend_name', 'content': 'quay_content', 'show_children': 'quay_show_children', 'selected': 'quay_selected', 'selected_index': 'quay_selected_index', 'current_sidebar_item_count': 'quay_current_sidebar_item_count', 'processed_items': 'quay_processed_items', 'info_box': 'quay_info_box', 'tabname': 'quay_tabname', 'highlighted': 'quay_highlighted', 'currently_displayed_index': 'quay_currently_displayed_index', 'status_string': 'quay_status_string', 'prompt_string': 'quay_prompt_string', 'user_input_is_string': 'quay_user_input_is_string', 'active_render_subbox': 'quay_active_render_subbox', 'response': 'quay_response', 'active_render_menu': 'quay_active_render_menu', 'active_menu_start_x': 'quay_active_menu_start_x', 'current_dir_path': 'quay_current_dir_path', 'select_file': 'quay_select_file', 'callback': 'quay_callback', 'supports_color': 'quay_supports_color', 'supported_colors': 'quay_supported_colors', 'hard_fail': 'quay_hard_fail', 'titlebar': 'quay_titlebar', 'sidebar': 'quay_sidebar', 'mainscreen': 'quay_mainscreen', 'footerbar': 'quay_footerbar', 'debug_menu': 'quay_debug_menu', 'help_menu': 'quay_help_menu', 'title_menu_overlay': 'quay_title_menu_overlay', 'loader_status': 'quay_loader_status', 'file_browser': 'quay_file_browser', 'input_overlay': 'quay_input_overlay', 'is_showing_menu_overlay': 'quay_is_showing_menu_overlay', 'active_key_handler': 'quay_active_key_handler', 'key_handlers': 'quay_key_handlers', 'mouse_handlers': 'quay_mouse_handlers', 'last_mouse_event': 'quay_last_mouse_event', 'render_group': 'quay_render_group', 'Constructable': 'quay_Constructable', 'REBASE_OPCODE': 'quay_REBASE_OPCODE', 'BINDING_OPCODE': 'quay_BINDING_OPCODE', 'BlobIndex': 'quay_BlobIndex', 'Blob': 'quay_Blob', 'SuperBlob': 'quay_SuperBlob', 'length': 'quay_length', 'blob': 'quay_blob', 'dyld_chained_fixups_header': 'quay_dyld_chained_fixups_header', 'dyld_chained_starts_in_image': 'quay_dyld_chained_starts_in_image', 'dyld_chained_starts_in_segment': 'quay_dyld_chained_starts_in_segment', 'dyld_chained_start_offsets': 'quay_dyld_chained_start_offsets', 'dyld_chained_ptr_format': 'quay_dyld_chained_ptr_format', 'dyld_chained_import_format': 'quay_dyld_chained_import_format', 'ChainedFixupPointerGeneric': 'quay_ChainedFixupPointerGeneric', 'dyld_chained_import': 'quay_dyld_chained_import', '_FIELDS': 'quay__FIELDS', 'dyld_chained_import_addend': 'quay_dyld_chained_import_addend', 'dyld_chained_import_addend64': 'quay_dyld_chained_import_addend64', 'dyld_chained_ptr': 'quay_dyld_chained_ptr', 'dyld_chained_ptr_arm64e': 'quay_dyld_chained_ptr_arm64e', 'dyld_chained_ptr_arm64e_rebase': 'quay_dyld_chained_ptr_arm64e_rebase', 'dyld_chained_ptr_arm64e_bind': 'quay_dyld_chained_ptr_arm64e_bind', 'dyld_chained_ptr_arm64e_auth_rebase': 'quay_dyld_chained_ptr_arm64e_auth_rebase', 'dyld_chained_ptr_arm64e_auth_bind': 'quay_dyld_chained_ptr_arm64e_auth_bind', 'dyld_chained_ptr_64': 'quay_dyld_chained_ptr_64', 'dyld_chained_ptr_64_rebase': 'quay_dyld_chained_ptr_64_rebase', 'dyld_chained_ptr_64_bind': 'quay_dyld_chained_ptr_64_bind', 'dyld_chained_ptr_arm64e_bind24': 'quay_dyld_chained_ptr_arm64e_bind24', 'dyld_chained_ptr_arm64e_auth_bind24': 'quay_dyld_chained_ptr_arm64e_auth_bind24', 'dyld_chained_ptr_32_rebase': 'quay_dyld_chained_ptr_32_rebase', 'dyld_chained_ptr_32_bind': 'quay_dyld_chained_ptr_32_bind', 'dyld_chained_ptr_32_cache_rebase': 'quay_dyld_chained_ptr_32_cache_rebase', 'dyld_chained_ptr_32_firmware_rebase': 'quay_dyld_chained_ptr_32_firmware_rebase', 'ChainedPointerArm64E': 'quay_ChainedPointerArm64E', 'ChainedPointerGeneric64': 'quay_ChainedPointerGeneric64', 'ChainedPointerGeneric32': 'quay_ChainedPointerGeneric32', 'ChainedFixupPointer64Union': 'quay_ChainedFixupPointer64Union', 'ChainedFixupPointer32': 'quay_ChainedFixupPointer32', 'ChainedFixupPointer64': 'quay_ChainedFixupPointer64', 'ChainedFixupKernel64': 'quay_ChainedFixupKernel64', 'fixups_version': 'quay_fixups_version', 'starts_offset': 'quay_starts_offset', 'imports_offset': 'quay_imports_offset', 'symbols_offset': 'quay_symbols_offset', 'imports_count': 'quay_imports_count', 'imports_format': 'quay_imports_format', 'symbols_format': 'quay_symbols_format', 'seg_count': 'quay_seg_count', 'seg_info_offset': 'quay_seg_info_offset', 'pointer_format': 'quay_pointer_format', 'segment_offset': 'quay_segment_offset', 'max_valid_pointer': 'quay_max_valid_pointer', 'page_count': 'quay_page_count', 'page_starts': 'quay_page_starts', 'starts_count': 'quay_starts_count', 'chain_starts': 'quay_chain_starts', 'lib_ordinal': 'quay_lib_ordinal', 'weak_import': 'quay_weak_import', 'name_offset': 'quay_name_offset', 'addend': 'quay_addend', 'ptr': 'quay_ptr', 'bind': 'quay_bind', 'auth': 'quay_auth', 'high8': 'quay_high8', 'next': 'quay_next', 'zero': 'quay_zero', 'diversity': 'quay_diversity', 'addrDiv': 'quay_addrDiv', 'key': 'quay_key', 'generic32': 'quay_generic32', 'generic64': 'quay_generic64', 'cacheLevel': 'quay_cacheLevel', 'LoadCommand': 'quay_LoadCommand', 'SegmentLoadCommand': 'quay_SegmentLoadCommand', 'SymtabLoadCommand': 'quay_SymtabLoadCommand', 'symtab_offset': 'quay_symtab_offset', 'symtab_entry_count': 'quay_symtab_entry_count', 'string_table_offset': 'quay_string_table_offset', 'string_table_size': 'quay_string_table_size', 'MH_FLAGS': 'quay_MH_FLAGS', 'MH_FILETYPE': 'quay_MH_FILETYPE', 'LOAD_COMMAND': 'quay_LOAD_COMMAND', 'S_FLAGS_MASKS': 'quay_S_FLAGS_MASKS', 'SectionType': 'quay_SectionType', 'SectionAttributesUser': 'quay_SectionAttributesUser', 'SectionAttributesSys': 'quay_SectionAttributesSys', 'CPUType': 'quay_CPUType', 'CPUSubTypeX86': 'quay_CPUSubTypeX86', 'CPUSubTypeX86_64': 'quay_CPUSubTypeX86_64', 'CPUSubTypeARM': 'quay_CPUSubTypeARM', 'CPUSubTypeARM64': 'quay_CPUSubTypeARM64', 'CPUSubTypeSPARC': 'quay_CPUSubTypeSPARC', 'CPUSubTypePowerPC': 'quay_CPUSubTypePowerPC', 'CPUSubTypeARM6432': 'quay_CPUSubTypeARM6432', 'fat_header': 'quay_fat_header', 'fat_arch': 'quay_fat_arch', 'mach_header_64': 'quay_mach_header_64', 'unk_command': 'quay_unk_command', 'segment_command': 'quay_segment_command', 'segment_command_64': 'quay_segment_command_64', 'section': 'quay_section', 'section_64': 'quay_section_64', 'symtab_command': 'quay_symtab_command', 'dysymtab_command': 'quay_dysymtab_command', 'dylib_command': 'quay_dylib_command', 'dylinker_command': 'quay_dylinker_command', 'sub_client_command': 'quay_sub_client_command', 'uuid_command': 'quay_uuid_command', 'uuid_field_composer': 'quay_uuid_field_composer', 'build_version_command': 'quay_build_version_command', 'entry_point_command': 'quay_entry_point_command', 'rpath_command': 'quay_rpath_command', 'source_version_command': 'quay_source_version_command', 'linkedit_data_command': 'quay_linkedit_data_command', 'dyld_info_command': 'quay_dyld_info_command', 'symtab_entry_32': 'quay_symtab_entry_32', 'symtab_entry': 'quay_symtab_entry', 'version_min_command': 'quay_version_min_command', 'encryption_info_command': 'quay_encryption_info_command', 'encryption_info_command_64': 'quay_encryption_info_command_64', 'thread_command': 'quay_thread_command', 'nfat_archs': 'quay_nfat_archs', 'cpu_type': 'quay_cpu_type', 'cpu_subtype': 'quay_cpu_subtype', 'loadcnt': 'quay_loadcnt', 'loadsize': 'quay_loadsize', 'cmdsize': 'quay_cmdsize', 'segname': 'quay_segname', 'vmaddr': 'quay_vmaddr', 'vmsize': 'quay_vmsize', 'fileoff': 'quay_fileoff', 'filesize': 'quay_filesize', 'maxprot': 'quay_maxprot', 'initprot': 'quay_initprot', 'nsects': 'quay_nsects', 'sectname': 'quay_sectname', 'addr': 'quay_addr', 'reloff': 'quay_reloff', 'nreloc': 'quay_nreloc', 'reserved1': 'quay_reserved1', 'reserved2': 'quay_reserved2', 'reserved3': 'quay_reserved3', 'symoff': 'quay_symoff', 'nsyms': 'quay_nsyms', 'stroff': 'quay_stroff', 'strsize': 'quay_strsize', 'ilocalsym': 'quay_ilocalsym', 'nlocalsym': 'quay_nlocalsym', 'iextdefsym': 'quay_iextdefsym', 'nextdefsym': 'quay_nextdefsym', 'iundefsym': 'quay_iundefsym', 'nundefsym': 'quay_nundefsym', 'tocoff': 'quay_tocoff', 'ntoc': 'quay_ntoc', 'modtaboff': 'quay_modtaboff', 'nmodtab': 'quay_nmodtab', 'extrefsymoff': 'quay_extrefsymoff', 'nextrefsyms': 'quay_nextrefsyms', 'indirectsymoff': 'quay_indirectsymoff', 'nindirectsyms': 'quay_nindirectsyms', 'extreloff': 'quay_extreloff', 'nextrel': 'quay_nextrel', 'locreloff': 'quay_locreloff', 'nlocrel': 'quay_nlocrel', 'timestamp': 'quay_timestamp', 'current_version': 'quay_current_version', 'compatibility_version': 'quay_compatibility_version', 'sdk': 'quay_sdk', 'ntools': 'quay_ntools', 'entryoff': 'quay_entryoff', 'stacksize': 'quay_stacksize', 'path': 'quay_path', 'dataoff': 'quay_dataoff', 'datasize': 'quay_datasize', 'rebase_off': 'quay_rebase_off', 'rebase_size': 'quay_rebase_size', 'bind_off': 'quay_bind_off', 'bind_size': 'quay_bind_size', 'weak_bind_off': 'quay_weak_bind_off', 'weak_bind_size': 'quay_weak_bind_size', 'lazy_bind_off': 'quay_lazy_bind_off', 'lazy_bind_size': 'quay_lazy_bind_size', 'export_off': 'quay_export_off', 'export_size': 'quay_export_size', 'str_index': 'quay_str_index', 'sect_index': 'quay_sect_index', 'cryptoff': 'quay_cryptoff', 'cryptsize': 'quay_cryptsize', 'cryptid': 'quay_cryptid', 'pad': 'quay_pad', 'flavor': 'quay_flavor', 'cmdisze': 'quay_cmdisze', 'ProtocolDescriptor': 'quay_ProtocolDescriptor', 'ProtocolConformanceDescriptor': 'quay_ProtocolConformanceDescriptor', 'EnumDescriptor': 'quay_EnumDescriptor', 'StructDescriptor': 'quay_StructDescriptor', 'ClassDescriptor': 'quay_ClassDescriptor', 'FieldDescriptor': 'quay_FieldDescriptor', 'FieldRecord': 'quay_FieldRecord', 'AssociatedTypeRecord': 'quay_AssociatedTypeRecord', 'AssociatedTypeDescriptor': 'quay_AssociatedTypeDescriptor', 'BuiltinTypeDescriptor': 'quay_BuiltinTypeDescriptor', 'CaptureTypeRecord': 'quay_CaptureTypeRecord', 'MetadataSourceRecord': 'quay_MetadataSourceRecord', 'CaptureDescriptor': 'quay_CaptureDescriptor', 'Replacement': 'quay_Replacement', 'ReplacementScope': 'quay_ReplacementScope', 'AutomaticReplacements': 'quay_AutomaticReplacements', 'OpaqueReplacement': 'quay_OpaqueReplacement', 'OpaqueAutomaticReplacement': 'quay_OpaqueAutomaticReplacement', 'ClassMethodListTable': 'quay_ClassMethodListTable', 'TargetMethodDescriptor': 'quay_TargetMethodDescriptor', 'ContextDescriptorKind': 'quay_ContextDescriptorKind', 'Flags': 'quay_Flags', 'Parent': 'quay_Parent', 'Name': 'quay_Name', 'NumRequirementsInSignature': 'quay_NumRequirementsInSignature', 'NumRequirements': 'quay_NumRequirements', 'AssociatedTypeNames': 'quay_AssociatedTypeNames', 'NominalTypeDescriptor': 'quay_NominalTypeDescriptor', 'ProtocolWitnessTable': 'quay_ProtocolWitnessTable', 'ConformanceFlags': 'quay_ConformanceFlags', 'AccessFunction': 'quay_AccessFunction', 'NumPayloadCasesAndPayloadSizeOffset': 'quay_NumPayloadCasesAndPayloadSizeOffset', 'NumEmptyCases': 'quay_NumEmptyCases', 'NumFields': 'quay_NumFields', 'FieldOffsetVectorOffset': 'quay_FieldOffsetVectorOffset', 'SuperclassType': 'quay_SuperclassType', 'MetadataNegativeSizeInWords': 'quay_MetadataNegativeSizeInWords', 'MetadataPositiveSizeInWords': 'quay_MetadataPositiveSizeInWords', 'NumImmediateMembers': 'quay_NumImmediateMembers', 'MangledTypeName': 'quay_MangledTypeName', 'Superclass': 'quay_Superclass', 'Kind': 'quay_Kind', 'FieldRecordSize': 'quay_FieldRecordSize', 'FieldName': 'quay_FieldName', 'SubstitutedTypename': 'quay_SubstitutedTypename', 'ConformingTypeName': 'quay_ConformingTypeName', 'ProtocolTypeName': 'quay_ProtocolTypeName', 'NumAssociatedTypes': 'quay_NumAssociatedTypes', 'AssociatedTypeRecordSize': 'quay_AssociatedTypeRecordSize', 'TypeName': 'quay_TypeName', 'Size': 'quay_Size', 'AlignmentAndFlags': 'quay_AlignmentAndFlags', 'Stride': 'quay_Stride', 'NumExtraInhabitants': 'quay_NumExtraInhabitants', 'MangledMetadataSource': 'quay_MangledMetadataSource', 'NumCaptureTypes': 'quay_NumCaptureTypes', 'NumMetadataSources': 'quay_NumMetadataSources', 'NumBindings': 'quay_NumBindings', 'ReplacedFunctionKey': 'quay_ReplacedFunctionKey', 'NewFunction': 'quay_NewFunction', 'NumReplacements': 'quay_NumReplacements', 'Replacements': 'quay_Replacements', 'Original': 'quay_Original', 'VTableOffset': 'quay_VTableOffset', 'VTableSize': 'quay_VTableSize', 'Impl': 'quay_Impl', 'Data': 'quay_Data', 'fromBase64': 'quay_fromBase64', 'asBase64': 'quay_asBase64', '_PlistParser': 'quay__PlistParser', 'parse': 'quay_parse', 'handle_entity_decl': 'quay_handle_entity_decl', 'handle_begin_element': 'quay_handle_begin_element', 'handle_end_element': 'quay_handle_end_element', 'handle_data': 'quay_handle_data', 'add_object': 'quay_add_object', 'get_data': 'quay_get_data', '_DumbXMLWriter': 'quay__DumbXMLWriter', 'begin_element': 'quay_begin_element', 'end_element': 'quay_end_element', 'simple_element': 'quay_simple_element', 'writeln': 'quay_writeln', '_PlistWriter': 'quay__PlistWriter', 'write_value': 'quay_write_value', 'write_data': 'quay_write_data', 'write_bytes': 'quay_write_bytes', 'write_dict': 'quay_write_dict', 'write_array': 'quay_write_array', 'InvalidFileException': 'quay_InvalidFileException', '_BinaryPlistParser': 'quay__BinaryPlistParser', '_get_size': 'quay__get_size', '_read_ints': 'quay__read_ints', '_read_refs': 'quay__read_refs', '_read_object': 'quay__read_object', '_BinaryPlistWriter': 'quay__BinaryPlistWriter', '_flatten': 'quay__flatten', '_getrefnum': 'quay__getrefnum', '_write_size': 'quay__write_size', '_write_object': 'quay__write_object', 'data': 'quay_data', 'stack': 'quay_stack', 'current_key': 'quay_current_key', '_use_builtin_types': 'quay__use_builtin_types', '_dict_type': 'quay__dict_type', 'parser': 'quay_parser', '_indent_level': 'quay__indent_level', 'indent': 'quay_indent', '_sort_keys': 'quay__sort_keys', '_skipkeys': 'quay__skipkeys', '_fp': 'quay__fp', '_objlist': 'quay__objlist', '_objtable': 'quay__objtable', '_objidtable': 'quay__objidtable', '_object_offsets': 'quay__object_offsets', '_ref_size': 'quay__ref_size', '_ref_format': 'quay__ref_format', '_objects': 'quay__objects', 'LogLevel': 'quay_LogLevel', 'log': 'quay_log', 'LOG_LEVEL': 'quay_LOG_LEVEL', 'LOG_FUNC': 'quay_LOG_FUNC', 'LOG_ERR': 'quay_LOG_ERR', 'get_class_from_frame': 'quay_get_class_from_frame', 'line': 'quay_line', 'debug': 'quay_debug', 'debug_more': 'quay_debug_more', 'debug_tm': 'quay_debug_tm', 'warn': 'quay_warn', 'warning': 'quay_warning', 'error': 'quay_error', 'uintptr_t': 'quay_uintptr_t', 'pad_for_64_bit_only': 'quay_pad_for_64_bit_only', 'Bitfield': 'quay_Bitfield', 'StructUnion': 'quay_StructUnion', 'load_from_bytes': 'quay_load_from_bytes', 'Struct': 'quay_Struct', 'StructFieldColorType': 'quay_StructFieldColorType', 't': 'quay_t', 't_base': 'quay_t_base', 't_token': 'quay_t_token', 't_name': 'quay_t_name', 'create_with_bytes': 'quay_create_with_bytes', 'create_with_values': 'quay_create_with_values', 'description': 'quay_description', '_default_field_render': 'quay__default_field_render', 'render_color': 'quay_render_color', 'render_indented': 'quay_render_indented', 'add_field_composer': 'quay_add_field_composer', 'pre_init': 'quay_pre_init', 'post_init': 'quay_post_init', 'size_bits': 'quay_size_bits', 'decoded_fields': 'quay_decoded_fields', 'initialized': 'quay_initialized', 'super': 'quay_super', '_fields': 'quay__fields', '_field_sizes': 'quay__field_sizes', '_field_offsets': 'quay__field_offsets', '_field_composers': 'quay__field_composers', 'off': 'quay_off', 'ScratchFile': 'quay_ScratchFile', 'copy': 'quay_copy', 'get': 'quay_get', 'read': 'quay_read', 'reset': 'quay_reset', 'sunion_test': 'quay_sunion_test', 'StructTestCase': 'quay_StructTestCase', 'test_equality_check': 'quay_test_equality_check', 'test_union': 'quay_test_union', 'BackingFileTestCase': 'quay_BackingFileTestCase', 'test_with_mmaped_and_actual_file_pointer': 'quay_test_with_mmaped_and_actual_file_pointer', 'SliceTestCase': 'quay_SliceTestCase', 'test_patch': 'quay_test_patch', 'test_find': 'quay_test_find', 'test_get_bytes': 'quay_test_get_bytes', 'test_get_str': 'quay_test_get_str', 'test_get_cstr': 'quay_test_get_cstr', 'test_decode_uleb128': 'quay_test_decode_uleb128', 'ImageHeaderTestCase': 'quay_ImageHeaderTestCase', 'test_constructable': 'quay_test_constructable', 'test_bad_load_command': 'quay_test_bad_load_command', 'test_readint': 'quay_test_readint', 'test_insert_cmd': 'quay_test_insert_cmd', 'test_remove_cmd': 'quay_test_remove_cmd', 'test_replace_load_command': 'quay_test_replace_load_command', 'MachOLoaderTestCase': 'quay_MachOLoaderTestCase', 'test_thin_type': 'quay_test_thin_type', 'test_fat_type': 'quay_test_fat_type', 'test_bad_magic': 'quay_test_bad_magic', 'test_bad_fat_offset': 'quay_test_bad_fat_offset', 'test_slice_count': 'quay_test_slice_count', 'SegmentLCTestCase': 'quay_SegmentLCTestCase', 'VMTestCase': 'quay_VMTestCase', 'test_good_16k_page_vm_map': 'quay_test_good_16k_page_vm_map', 'test_fallback_vm': 'quay_test_fallback_vm', 'test_bad_16k_page_vm_map': 'quay_test_bad_16k_page_vm_map', 'ImageTestCase': 'quay_ImageTestCase', 'test_serialization': 'quay_test_serialization', 'test_vm_realignment': 'quay_test_vm_realignment', 'test_rw_prims': 'quay_test_rw_prims', 'CodesignTestClass': 'quay_CodesignTestClass', 'test_codesigning': 'quay_test_codesigning', 'DyldTestCase': 'quay_DyldTestCase', 'test_install_name': 'quay_test_install_name', 'test_linked_images': 'quay_test_linked_images', 'field': 'quay_field', 'scratch': 'quay_scratch', 'backup': 'quay_backup', 'thin': 'quay_thin', 'fat': 'quay_fat', 'thin_lib': 'quay_thin_lib', 'signed': 'quay_signed'})
+@_name_boundary.class_contract('Bitfield', {n: 'quay_' + n for n in
+    ('fields', 'size', 'size_bits', 'decoded_fields', 'decode_bitfield')})
 class quay_Bitfield:
-    """ Horrible class for decoding bitfields. This basically just exists for chained fixups do not write anything
-        that uses this because I hardly understand what i've even wrote.
+    def __init__(self, fields: dict):
+        if not isinstance(fields, dict) or not fields or len(fields) > MAX_RECORD_FIELDS:
+            raise ValueError('bitfield needs a finite nonempty field dictionary')
+        for name, bits in fields.items():
+            if not isinstance(name, str) or not name or type(bits) is not int or bits <= 0:
+                raise ValueError('bitfield names and widths are invalid')
+        total = sum(fields.values())
+        if total % 8 or total > 4096:
+            raise ValueError('bitfield width must be byte aligned and at most 4096 bits')
+        self.fields = MappingProxyType(dict(fields))
+        self.size_bits, self.size = total, total // 8
+        self.decoded_fields = {}
 
-        Initialize with dict of field name to size in bits.
-        Load fields with ``myBitfieldInstance.decode_bitfield(myProperlySizedBytearray)``
-        Access by myBitfieldInstance.field_name
-    """
+    def quay_decode_bitfield(self, value, byte_order='little'):
+        raw = bytes(value)
+        if len(raw) != self.size:
+            raise ValueError('bitfield byte count does not match its layout')
+        word, position = int.from_bytes(raw, _order(byte_order)), 0
+        decoded = {}
+        for name, bits in self.fields.items():
+            decoded[name] = (word >> position) & ((1 << bits) - 1)
+            position += bits
+        self.decoded_fields = decoded
+        for name, number in decoded.items():
+            _name_boundary.write_attribute(self, name, number)
+        return dict(decoded)
 
-    @_name_boundary.callable_contract({'self': 'quay_self_7c70ca5', 'fields': 'quay_fields_99819c8'}, '__init__')
-    def __init__(quay_self_7c70ca5, quay_fields_99819c8: dict):
-        _name_boundary.attributes(quay_self_7c70ca5)['fields'] = quay_fields_99819c8
-        _name_boundary.attributes(quay_self_7c70ca5)['size'] = sum(_name_boundary.attributes(quay_self_7c70ca5)['fields'].values()) // 8
-        _name_boundary.attributes(quay_self_7c70ca5)['size_bits'] = sum(_name_boundary.attributes(quay_self_7c70ca5)['fields'].values())
-        _name_boundary.attributes(quay_self_7c70ca5)['decoded_fields'] = {}
 
-    @_name_boundary.callable_contract({'self': 'quay_self_d8984a1', 'value': 'quay_value_6c5a383'}, 'decode_bitfield')
-    def quay_decode_bitfield(quay_self_d8984a1, quay_value_6c5a383):
-        quay_int_value_037f5d3 = int.from_bytes(quay_value_6c5a383, 'little')
-        quay_bit_pos_2518ef4 = 0
-        for quay_field_name_eb5099a, quay_bit_size_8cec8f1 in _name_boundary.attributes(_name_boundary.attributes(quay_self_d8984a1)['fields'])['items']():
-            quay_mask_2fb3cdf = (1 << quay_bit_size_8cec8f1) - 1
-            _name_boundary.attributes(quay_self_d8984a1)['decoded_fields'][quay_field_name_eb5099a] = quay_int_value_037f5d3 >> quay_bit_pos_2518ef4 & quay_mask_2fb3cdf
-            _name_boundary.write_attribute(quay_self_d8984a1, quay_field_name_eb5099a, _name_boundary.attributes(quay_self_d8984a1)['decoded_fields'][quay_field_name_eb5099a])
-            quay_bit_pos_2518ef4 += quay_bit_size_8cec8f1
+def _schema(record_class):
+    fields = _name_boundary.read_attribute(record_class, 'FIELDS', None)
+    if fields is None:
+        fields = _name_boundary.read_attribute(record_class, '_FIELDS', None)
+    if fields is not None:
+        if not hasattr(fields, 'items'):
+            raise TypeError('record schema must be an ordered mapping')
+        pairs = list(fields.items())
+    else:
+        names = _name_boundary.read_attribute(record_class, '_FIELDNAMES', None)
+        sizes = _name_boundary.read_attribute(record_class, '_SIZES', None)
+        if names is None or sizes is None:
+            return None
+        if len(names) != len(sizes):
+            raise ValueError('record field names and widths differ in length')
+        pairs = list(zip(names, sizes))
+    _field_names(pairs)
+    return pairs
 
-@_name_boundary.class_contract('StructUnion', {'load_from_bytes': 'quay_load_from_bytes', 'CodesignInfo': 'quay_CodesignInfo', 'from_image': 'quay_from_image', 'from_values': 'quay_from_values', 'raw_bytes': 'quay_raw_bytes', 'superblob': 'quay_superblob', 'slots': 'quay_slots', 'entitlements': 'quay_entitlements', 'req_dat': 'quay_req_dat', 'MalformedMachOException': 'quay_MalformedMachOException', 'MachOAlignmentError': 'quay_MachOAlignmentError', 'VMAddressingError': 'quay_VMAddressingError', 'UnsupportedFiletypeException': 'quay_UnsupportedFiletypeException', 'NoObjCMetadataException': 'quay_NoObjCMetadataException', 'TBDGenerator': 'quay_TBDGenerator', '_generate_dict': 'quay__generate_dict', 'FatMachOGenerator': 'quay_FatMachOGenerator', '_fat_arch_for_slice': 'quay__fat_arch_for_slice', 'image': 'quay_image', 'objc_lib': 'quay_objc_lib', 'general': 'quay_general', 'dict': 'quay_dict', 'slices': 'quay_slices', 'fat_archs': 'quay_fat_archs', 'fat_head': 'quay_fat_head', 'HeaderUtils': 'quay_HeaderUtils', 'header_head_html': 'quay_header_head_html', 'header_head': 'quay_header_head', 'TypeResolver': 'quay_TypeResolver', 'find_linked': 'quay_find_linked', 'HeaderGenerator': 'quay_HeaderGenerator', 'StructHeader': 'quay_StructHeader', 'Header': 'quay_Header', 'generate_highlighted_text': 'quay_generate_highlighted_text', 'generate_html': 'quay_generate_html', '_generate_text': 'quay__generate_text', '_process_import_section': 'quay__process_import_section', 'CategoryHeader': 'quay_CategoryHeader', 'ProtocolHeader': 'quay_ProtocolHeader', 'Interface': 'quay_Interface', '_process_properties': 'quay__process_properties', '_process_ivars': 'quay__process_ivars', '_process_methods': 'quay__process_methods', 'StructDef': 'quay_StructDef', 'CategoryInterface': 'quay_CategoryInterface', 'ProtocolInterface': 'quay_ProtocolInterface', 'UmbrellaHeader': 'quay_UmbrellaHeader', 'objc_image': 'quay_objc_image', 'classmap': 'quay_classmap', 'classes': 'quay_classes', 'local_classes': 'quay_local_classes', 'local_protos': 'quay_local_protos', '_linked_cache': 'quay__linked_cache', 'type_resolver': 'quay_type_resolver', 'headers': 'quay_headers', 'text': 'quay_text', 'interface': 'quay_interface', 'objc_class': 'quay_objc_class', 'forward_declare_private_imports': 'quay_forward_declare_private_imports', 'forward_declaration_classes': 'quay_forward_declaration_classes', 'forward_declaration_protocols': 'quay_forward_declaration_protocols', 'imported_classes': 'quay_imported_classes', 'locally_imported_classes': 'quay_locally_imported_classes', 'locally_imported_protocols': 'quay_locally_imported_protocols', 'highlighted_text': 'quay_highlighted_text', 'category': 'quay_category', 'properties': 'quay_properties', 'methods': 'quay_methods', 'protocols': 'quay_protocols', 'protocol': 'quay_protocol', 'ivars': 'quay_ivars', 'structs': 'quay_structs', 'getters': 'quay_getters', 'setters': 'quay_setters', 'struct_definition': 'quay_struct_definition', 'VM': 'quay_VM', 'vm_check': 'quay_vm_check', 'add_segment': 'quay_add_segment', 'translate': 'quay_translate', 'de_translate': 'quay_de_translate', 'map_pages': 'quay_map_pages', 'MisalignedVM': 'quay_MisalignedVM', 'LinkedImage': 'quay_LinkedImage', 'serialize': 'quay_serialize', '_get_name': 'quay__get_name', 'Image': 'quay_Image', 'vm_realign': 'quay_vm_realign', 'read_uint': 'quay_read_uint', 'read_ptr': 'quay_read_ptr', 'read_int': 'quay_read_int', 'read_bytearray': 'quay_read_bytearray', 'read_struct': 'quay_read_struct', 'read_fixed_len_str': 'quay_read_fixed_len_str', 'read_cstr': 'quay_read_cstr', 'read_uleb128': 'quay_read_uleb128', 'page_size': 'quay_page_size', 'page_size_bits': 'quay_page_size_bits', 'page_table': 'quay_page_table', 'tlb': 'quay_tlb', 'segs': 'quay_segs', 'vm_base_addr': 'quay_vm_base_addr', 'dirty': 'quay_dirty', 'fallback': 'quay_fallback', 'detag_kern_64': 'quay_detag_kern_64', 'detag_64': 'quay_detag_64', 'map': 'quay_map', 'stats': 'quay_stats', 'sorted_map': 'quay_sorted_map', 'cache': 'quay_cache', 'cmd': 'quay_cmd', 'source_image': 'quay_source_image', 'install_name': 'quay_install_name', 'weak': 'quay_weak', 'local': 'quay_local', 'slice': 'quay_slice', 'vm': 'quay_vm', 'base_name': 'quay_base_name', 'linked_images': 'quay_linked_images', 'segments': 'quay_segments', 'info': 'quay_info', 'dylib': 'quay_dylib', 'uuid': 'quay_uuid', 'codesign_info': 'quay_codesign_info', '_codesign_cmd': 'quay__codesign_cmd', 'platform': 'quay_platform', 'allowed_clients': 'quay_allowed_clients', 'rpath': 'quay_rpath', 'minos': 'quay_minos', 'sdk_version': 'quay_sdk_version', 'imports': 'quay_imports', 'exports': 'quay_exports', 'symbols': 'quay_symbols', 'import_table': 'quay_import_table', 'export_table': 'quay_export_table', 'entry_point': 'quay_entry_point', 'function_starts': 'quay_function_starts', 'thread_state': 'quay_thread_state', '_entry_off': 'quay__entry_off', 'binding_table': 'quay_binding_table', 'weak_binding_table': 'quay_weak_binding_table', 'lazy_binding_table': 'quay_lazy_binding_table', 'export_trie': 'quay_export_trie', 'chained_fixups': 'quay_chained_fixups', 'symbol_table': 'quay_symbol_table', 'struct_cache': 'quay_struct_cache', 'macho_header': 'quay_macho_header', 'ptr_size': 'quay_ptr_size', 'kmod_info_64': 'quay_kmod_info_64', '_FIELDNAMES': 'quay__FIELDNAMES', '_SIZES': 'quay__SIZES', 'SIZE': 'quay_SIZE', 'Kext': 'quay_Kext', 'EmbeddedKext': 'quay_EmbeddedKext', 'MergedKext': 'quay_MergedKext', 'KernelCache': 'quay_KernelCache', '_process_kexts_from_prelink_info': 'quay__process_kexts_from_prelink_info', '_process_kexts': 'quay__process_kexts', '_process_prelink_info': 'quay__process_prelink_info', '_process_merged_kexts': 'quay__process_merged_kexts', 'next_addr': 'quay_next_addr', 'info_version': 'quay_info_version', 'id': 'quay_id', 'name': 'quay_name', 'version': 'quay_version', 'reference_count': 'quay_reference_count', 'reference_list_addr': 'quay_reference_list_addr', 'address': 'quay_address', 'size': 'quay_size', 'hdr_size': 'quay_hdr_size', 'start_addr': 'quay_start_addr', 'stop_addr': 'quay_stop_addr', 'prelink_info': 'quay_prelink_info', 'development_region': 'quay_development_region', 'executable_name': 'quay_executable_name', 'bundle_name': 'quay_bundle_name', 'package_type': 'quay_package_type', 'info_string': 'quay_info_string', 'version_str': 'quay_version_str', 'backing_file': 'quay_backing_file', 'backing_image': 'quay_backing_image', 'backing_slice': 'quay_backing_slice', 'mach_header': 'quay_mach_header', 'mach_kernel_file': 'quay_mach_kernel_file', 'mach_kernel': 'quay_mach_kernel', 'kexts': 'quay_kexts', 'release_type': 'quay_release_type', 'arch': 'quay_arch', 'soc': 'quay_soc', 'KToolError': 'quay_ImageQuayError', 'MachOFileCommands': 'quay_MachOFileCommands', '_open': 'quay__open', 'ent': 'quay_ent', 'insert': 'quay_insert', 'edit': 'quay_edit', 'lipo': 'quay_lipo', '_list': 'quay__list', 'dump': 'quay_dump', 'kcache': 'quay_kcache', 'trie_unwrap': 'quay_trie_unwrap', 'MachOImageLoader': 'quay_MachOImageLoader', 'SYMTAB_LOADER': 'quay_SYMTAB_LOADER', 'load': 'quay_load', '_parse_load_commands': 'quay__parse_load_commands', '_process_image': 'quay__process_image', 'SymbolType': 'quay_SymbolType', 'Symbol': 'quay_Symbol', 'SymbolTable': 'quay_SymbolTable', '_load_symbol_table': 'quay__load_symbol_table', 'ChainedFixups': 'quay_ChainedFixups', 'ExportNode': 'quay_ExportNode', 'ExportTrie': 'quay_ExportTrie', '_read_node_tree_iter': 'quay__read_node_tree_iter', 'print_tree': 'quay_print_tree', 'BindingTable': 'quay_BindingTable', '_create_action_list': 'quay__create_action_list', '_load_binding_info': 'quay__load_binding_info', 'fullname': 'quay_fullname', 'dec_type': 'quay_dec_type', 'entry': 'quay_entry', 'ordinal': 'quay_ordinal', 'types': 'quay_types', 'external': 'quay_external', 'attr': 'quay_attr', 'ext': 'quay_ext', 'table': 'quay_table', 'rebases': 'quay_rebases', 'offset': 'quay_offset', 'flags': 'quay_flags', 'children': 'quay_children', 'raw': 'quay_raw', 'nodes': 'quay_nodes', 'root': 'quay_root', 'import_stack': 'quay_import_stack', 'actions': 'quay_actions', 'lookup_table': 'quay_lookup_table', 'link_table': 'quay_link_table', 'MachOFileType': 'quay_MachOFileType', 'BackingFile': 'quay_BackingFile', 'read_bytes': 'quay_read_bytes', 'write': 'quay_write', 'close': 'quay_close', 'SlicedBackingFile': 'quay_SlicedBackingFile', 'MachOFile': 'quay_MachOFile', '_load_struct': 'quay__load_struct', 'Section': 'quay_Section', 'SectionIterator': 'quay_SectionIterator', 'Segment': 'quay_Segment', '_process_sections': 'quay__process_sections', 'Slice': 'quay_Slice', 'patch': 'quay_patch', 'full_bytes_for_slice': 'quay_full_bytes_for_slice', 'find': 'quay_find', '_load_type': 'quay__load_type', '_load_subtype': 'quay__load_subtype', 'MachOImageHeader': 'quay_MachOImageHeader', 'MachOLoadCommandIterator': 'quay_MachOLoadCommandIterator', 'insert_load_command': 'quay_insert_load_command', 'remove_load_command': 'quay_remove_load_command', 'replace_load_command': 'quay_replace_load_command', 'PlatformType': 'quay_PlatformType', 'ToolType': 'quay_ToolType', 'fp': 'quay_fp', 'file': 'quay_file', 'file_object': 'quay_file_object', 'uses_mmaped_io': 'quay_uses_mmaped_io', 'magic': 'quay_magic', 'segment': 'quay_segment', 'vm_address': 'quay_vm_address', 'file_address': 'quay_file_address', 'is64': 'quay_is64', 'file_size': 'quay_file_size', 'sections': 'quay_sections', 'type': 'quay_type', 'macho_file': 'quay_macho_file', 'arch_struct': 'quay_arch_struct', 'byte_order': 'quay_byte_order', '_cstring_cache': 'quay__cstring_cache', 'dyld_header': 'quay_dyld_header', 'filetype': 'quay_filetype', 'load_commands': 'quay_load_commands', 'filename': 'quay_filename', 'header': 'quay_header', 'start': 'quay_start', 'end': 'quay_end', 'pos': 'quay_pos', 'subtype': 'quay_subtype', 'hdr': 'quay_hdr', 'ObjCImage': 'quay_ObjCImage', 'Struct_Representation': 'quay_Struct_Representation', 'EncodingType': 'quay_EncodingType', 'EncodedType': 'quay_EncodedType', 'Type': 'quay_Type', 'TypeProcessor': 'quay_TypeProcessor', 'save_struct': 'quay_save_struct', 'process': 'quay_process', 'tokenize': 'quay_tokenize', 'Ivar': 'quay_Ivar', '_renderable_type': 'quay__renderable_type', 'MethodList': 'quay_MethodList', 'CUSTOM_RMS_BASE': 'quay_CUSTOM_RMS_BASE', '_process_methlist': 'quay__process_methlist', 'Method': 'quay_Method', '_build_method_signature': 'quay__build_method_signature', 'LinkedClass': 'quay_LinkedClass', 'Class': 'quay_Class', '_load_linked_libraries': 'quay__load_linked_libraries', 'Property': 'quay_Property', 'decode_property_attributes': 'quay_decode_property_attributes', 'Category': 'quay_Category', 'Protocol': 'quay_Protocol', 'load_methods': 'quay_load_methods', 'tp': 'quay_tp', 'classlist': 'quay_classlist', 'catlist': 'quay_catlist', 'protolist': 'quay_protolist', 'class_map': 'quay_class_map', 'cat_map': 'quay_cat_map', 'prot_map': 'quay_prot_map', 'field_names': 'quay_field_names', 'fields': 'quay_fields', 'child': 'quay_child', 'pointer_count': 'quay_pointer_count', 'type_cache': 'quay_type_cache', 'typestr': 'quay_typestr', 'is_id': 'quay_is_id', 'methlist_head': 'quay_methlist_head', 'meta': 'quay_meta', 'load_errors': 'quay_load_errors', 'struct_list': 'quay_struct_list', 'sel': 'quay_sel', 'type_string': 'quay_type_string', 'imp': 'quay_imp', 'signature': 'quay_signature', 'classname': 'quay_classname', 'libname': 'quay_libname', 'superclass': 'quay_superclass', 'loc': 'quay_loc', 'linkedlibs': 'quay_linkedlibs', 'linked_classes': 'quay_linked_classes', 'fdec_classes': 'quay_fdec_classes', 'fdec_prots': 'quay_fdec_prots', 'opt_methods': 'quay_opt_methods', 'value': 'quay_value', 'return_string': 'quay_return_string', 'arguments': 'quay_arguments', 'attr_string': 'quay_attr_string', 'attributes': 'quay_attributes', 'ivarname': 'quay_ivarname', 'getter': 'quay_getter', 'setter': 'quay_setter', 'objc2_class': 'quay_objc2_class', 'FIELDS': 'quay_FIELDS', 'objc2_class_ro': 'quay_objc2_class_ro', 'objc2_meth': 'quay_objc2_meth', 'objc2_meth_list_entry': 'quay_objc2_meth_list_entry', 'objc2_meth_list': 'quay_objc2_meth_list', 'objc2_prop_list': 'quay_objc2_prop_list', 'objc2_prop': 'quay_objc2_prop', 'objc2_prot_list': 'quay_objc2_prot_list', 'objc2_prot': 'quay_objc2_prot', 'objc2_ivar_list': 'quay_objc2_ivar_list', 'objc2_ivar': 'quay_objc2_ivar', 'objc2_category': 'quay_objc2_category', 'isa': 'quay_isa', 'vtable': 'quay_vtable', 'ivar_base_start': 'quay_ivar_base_start', 'ivar_base_size': 'quay_ivar_base_size', 'reserved': 'quay_reserved', 'ivar_lyt': 'quay_ivar_lyt', 'base_meths': 'quay_base_meths', 'base_prots': 'quay_base_prots', 'weak_ivar_lyt': 'quay_weak_ivar_lyt', 'base_props': 'quay_base_props', 'selector': 'quay_selector', 'entrysize': 'quay_entrysize', 'count': 'quay_count', 'cnt': 'quay_cnt', 'prots': 'quay_prots', 'inst_meths': 'quay_inst_meths', 'class_meths': 'quay_class_meths', 'opt_inst_meths': 'quay_opt_inst_meths', 'opt_class_meths': 'quay_opt_class_meths', 'inst_props': 'quay_inst_props', 'cb': 'quay_cb', 'offs': 'quay_offs', 'align': 'quay_align', 's_class': 'quay_s_class', 'props': 'quay_props', 'Field': 'quay_Field', '_FieldDescriptor': 'quay__FieldDescriptor', 'SwiftStruct': 'quay_SwiftStruct', 'SwiftClass': 'quay_SwiftClass', 'SwiftEnum': 'quay_SwiftEnum', 'SwiftType': 'quay_SwiftType', 'SwiftImage': 'quay_SwiftImage', 'type_name': 'quay_type_name', 'desc': 'quay_desc', 'field_desc': 'quay_field_desc', 'class_desc': 'quay_class_desc', 'kind': 'quay_kind', 'typedesc': 'quay_typedesc', 'ignore': 'quay_ignore', 'MALFORMED': 'quay_MALFORMED', 'OBJC_ERRORS': 'quay_OBJC_ERRORS', 'opts': 'quay_opts', 'DISABLE_COLOR': 'quay_DISABLE_COLOR', 'USE_SYMTAB_INSTEAD_OF_SELECTORS': 'quay_USE_SYMTAB_INSTEAD_OF_SELECTORS', 'OBJC_LOAD_ERRORS_SEND_TO_DEBUG': 'quay_OBJC_LOAD_ERRORS_SEND_TO_DEBUG', 'QueueItem': 'quay_QueueItem', 'Queue': 'quay_Queue', 'process_item': 'quay_process_item', 'go': 'quay_go', 'FileType': 'quay_FileType', 'TapiYAMLWriter': 'quay_TapiYAMLWriter', 'write_out': 'quay_write_out', 'serialize_export_arch': 'quay_serialize_export_arch', 'serialize_list': 'quay_serialize_list', 'Table': 'quay_Table', 'preheat': 'quay_preheat', 'fetch_all': 'quay_fetch_all', 'fetch': 'quay_fetch', 'render': 'quay_render', 'args': 'quay_args', 'func': 'quay_func', 'items': 'quay_items', 'returns': 'quay_returns', 'multithread': 'quay_multithread', 'titles': 'quay_titles', 'rows': 'quay_rows', 'size_pinned_columns': 'quay_size_pinned_columns', 'dividers': 'quay_dividers', 'avoid_wrapping_titles': 'quay_avoid_wrapping_titles', 'ansi_borders': 'quay_ansi_borders', 'column_pad': 'quay_column_pad', 'column_maxes': 'quay_column_maxes', 'most_recent_adjusted_maxes': 'quay_most_recent_adjusted_maxes', 'rendered_row_cache': 'quay_rendered_row_cache', 'header_cache': 'quay_header_cache', 'ColorRep': 'quay_ColorRep', 'get_attr': 'quay_get_attr', 'Attribute': 'quay_Attribute', 'HIGHLIGHTED': 'quay_HIGHLIGHTED', 'UNDERLINED': 'quay_UNDERLINED', 'COLOR_1': 'quay_COLOR_1', 'COLOR_2': 'quay_COLOR_2', 'COLOR_3': 'quay_COLOR_3', 'COLOR_4': 'quay_COLOR_4', 'COLOR_5': 'quay_COLOR_5', 'COLOR_6': 'quay_COLOR_6', 'COLOR_7': 'quay_COLOR_7', 'AttributedString': 'quay_AttributedString', 'ansi_to_attrstr': 'quay_ansi_to_attrstr', 'fix_256_code': 'quay_fix_256_code', 'set_attr': 'quay_set_attr', 'ExitProgramException': 'quay_ExitProgramException', 'RebuildAllException': 'quay_RebuildAllException', 'PresentDebugMenuException': 'quay_PresentDebugMenuException', 'PresentTitleMenuException': 'quay_PresentTitleMenuException', 'FileBrowserOpenNewFileException': 'quay_FileBrowserOpenNewFileException', 'HelpMenuException': 'quay_HelpMenuException', 'DestroyTitleMenuException': 'quay_DestroyTitleMenuException', 'PanicException': 'quay_PanicException', 'HexDumpTable': 'quay_HexDumpTable', 'LazilyProcessedTextBuffer': 'quay_LazilyProcessedTextBuffer', 'RootBox': 'quay_RootBox', 'coord_translate': 'quay_coord_translate', 'Box': 'quay_Box', 'is_click_inbounds': 'quay_is_click_inbounds', 'ScrollingDisplayBuffer': 'quay_ScrollingDisplayBuffer', 'find_clean_breakpoint': 'quay_find_clean_breakpoint', 'process_lines': 'quay_process_lines', 'draw_lines': 'quay_draw_lines', 'rendered_lines_from': 'quay_rendered_lines_from', 'View': 'quay_View', 'add_subview': 'quay_add_subview', 'redraw': 'quay_redraw', 'handle_key_press': 'quay_handle_key_press', 'handle_mouse': 'quay_handle_mouse', 'ScrollView': 'quay_ScrollView', 'Button': 'quay_Button', 'set_text': 'quay_set_text', 'action': 'quay_action', 'TitleBarMenuItem': 'quay_TitleBarMenuItem', 'HelpMenuItem': 'quay_HelpMenuItem', 'function': 'quay_function', 'FileMenuItem': 'quay_FileMenuItem', 'open': 'quay_open', 'save': 'quay_save', 'EditMenuItem': 'quay_EditMenuItem', 'delete': 'quay_delete', 'DumpMenuItem': 'quay_DumpMenuItem', 'tbd': 'quay_tbd', 'TitleBar': 'quay_TitleBar', 'MENUS_START': 'quay_MENUS_START', 'exit': 'quay_exit', 'add_menu_item': 'quay_add_menu_item', 'FooterBar': 'quay_FooterBar', 'SidebarMenuItem': 'quay_SidebarMenuItem', 'parse_mmc': 'quay_parse_mmc', 'item_list_with_children': 'quay_item_list_with_children', 'Sidebar': 'quay_Sidebar', 'WIDTH': 'quay_WIDTH', 'select_item': 'quay_select_item', 'update_item_listing': 'quay_update_item_listing', 'collapse_index': 'quay_collapse_index', 'MainMenuContentItem': 'quay_MainMenuContentItem', 'MainScreen': 'quay_MainScreen', 'set_tab_name': 'quay_set_tab_name', 'DebugMenu': 'quay_DebugMenu', 'parse_lines': 'quay_parse_lines', 'HelpMenu': 'quay_HelpMenu', 'LoaderStatusView': 'quay_LoaderStatusView', 'UserInputPrompt': 'quay_UserInputPrompt', 'MenuOverlayRenderingView': 'quay_MenuOverlayRenderingView', 'FileSystemBrowserOverlayView': 'quay_FileSystemBrowserOverlayView', 'KToolMachOLoader': 'quay_ImageQuayMachOLoader', 'SUPPORTS_256': 'quay_SUPPORTS_256', 'SUPPORTS_COLOR': 'quay_SUPPORTS_COLOR', 'HARD_FAIL': 'quay_HARD_FAIL', 'CUR_SL': 'quay_CUR_SL', 'SL_CNT': 'quay_SL_CNT', 'parent_count': 'quay_parent_count', 'contents_for_file': 'quay_contents_for_file', 'contents_for_image': 'quay_contents_for_image', 'slice_item': 'quay_slice_item', '_file': 'quay__file', 'linked': 'quay_linked', 'codesign': 'quay_codesign', 'load_cmds': 'quay_load_cmds', 'symtab': 'quay_symtab', 'vm_map': 'quay_vm_map', 'objc_items': 'quay_objc_items', 'swift_items': 'quay_swift_items', 'swift_types': 'quay_swift_types', 'get_header_item': 'quay_get_header_item', 'get_header_text': 'quay_get_header_text', 'objc_headers': 'quay_objc_headers', 'KToolKernelCacheLoader': 'quay_ImageQuayKernelCacheLoader', 'get_kexts': 'quay_get_kexts', 'KToolScreen': 'quay_ImageQuayScreen', 'ktool_dbg_print_func': 'quay_imagequay_dbg_print_func', 'ktool_dbg_print_err_func': 'quay_imagequay_dbg_print_err_func', 'setup': 'quay_setup', 'teardown': 'quay_teardown', 'update_mainscreen_text': 'quay_update_mainscreen_text', 'update_load_status': 'quay_update_load_status', 'load_image': 'quay_load_image', 'load_file': 'quay_load_file', 'rebuild_all': 'quay_rebuild_all', 'redraw_all': 'quay_redraw_all', 'handle_present_menu_exception': 'quay_handle_present_menu_exception', 'program_loop': 'quay_program_loop', 'n': 'quay_n', 'string': 'quay_string', 'attrs': 'quay_attrs', 'hex': 'quay_hex', 'lines': 'quay_lines', 'processed': 'quay_processed', 'target': 'quay_target', 'target_args': 'quay_target_args', 'stdscr': 'quay_stdscr', 'parent': 'quay_parent', 'x': 'quay_x', 'y': 'quay_y', 'width': 'quay_width', 'height': 'quay_height', 'box': 'quay_box', 'scrollcursor': 'quay_scrollcursor', 'render_attr': 'quay_render_attr', 'processed_lines': 'quay_processed_lines', 'pinned_lines': 'quay_pinned_lines', 'wrap': 'quay_wrap', 'clean_wrap': 'quay_clean_wrap', 'filled_line_count': 'quay_filled_line_count', 'draw': 'quay_draw', 'scroll_view': 'quay_scroll_view', 'scroll_view_text_buffer': 'quay_scroll_view_text_buffer', 'scroll_cursor': 'quay_scroll_cursor', 'rend_text': 'quay_rend_text', 'rend_width': 'quay_rend_width', 'menu_items': 'quay_menu_items', 'menu_item_xy_map': 'quay_menu_item_xy_map', 'pres_menu_item': 'quay_pres_menu_item', 'pres_menu_item_index': 'quay_pres_menu_item_index', 'exit_button': 'quay_exit_button', 'show_debug': 'quay_show_debug', 'debug_text': 'quay_debug_text', 'hi_text': 'quay_hi_text', 'now': 'quay_now', 'rend_name': 'quay_rend_name', 'content': 'quay_content', 'show_children': 'quay_show_children', 'selected': 'quay_selected', 'selected_index': 'quay_selected_index', 'current_sidebar_item_count': 'quay_current_sidebar_item_count', 'processed_items': 'quay_processed_items', 'info_box': 'quay_info_box', 'tabname': 'quay_tabname', 'highlighted': 'quay_highlighted', 'currently_displayed_index': 'quay_currently_displayed_index', 'status_string': 'quay_status_string', 'prompt_string': 'quay_prompt_string', 'user_input_is_string': 'quay_user_input_is_string', 'active_render_subbox': 'quay_active_render_subbox', 'response': 'quay_response', 'active_render_menu': 'quay_active_render_menu', 'active_menu_start_x': 'quay_active_menu_start_x', 'current_dir_path': 'quay_current_dir_path', 'select_file': 'quay_select_file', 'callback': 'quay_callback', 'supports_color': 'quay_supports_color', 'supported_colors': 'quay_supported_colors', 'hard_fail': 'quay_hard_fail', 'titlebar': 'quay_titlebar', 'sidebar': 'quay_sidebar', 'mainscreen': 'quay_mainscreen', 'footerbar': 'quay_footerbar', 'debug_menu': 'quay_debug_menu', 'help_menu': 'quay_help_menu', 'title_menu_overlay': 'quay_title_menu_overlay', 'loader_status': 'quay_loader_status', 'file_browser': 'quay_file_browser', 'input_overlay': 'quay_input_overlay', 'is_showing_menu_overlay': 'quay_is_showing_menu_overlay', 'active_key_handler': 'quay_active_key_handler', 'key_handlers': 'quay_key_handlers', 'mouse_handlers': 'quay_mouse_handlers', 'last_mouse_event': 'quay_last_mouse_event', 'render_group': 'quay_render_group', 'Constructable': 'quay_Constructable', 'REBASE_OPCODE': 'quay_REBASE_OPCODE', 'BINDING_OPCODE': 'quay_BINDING_OPCODE', 'BlobIndex': 'quay_BlobIndex', 'Blob': 'quay_Blob', 'SuperBlob': 'quay_SuperBlob', 'length': 'quay_length', 'blob': 'quay_blob', 'dyld_chained_fixups_header': 'quay_dyld_chained_fixups_header', 'dyld_chained_starts_in_image': 'quay_dyld_chained_starts_in_image', 'dyld_chained_starts_in_segment': 'quay_dyld_chained_starts_in_segment', 'dyld_chained_start_offsets': 'quay_dyld_chained_start_offsets', 'dyld_chained_ptr_format': 'quay_dyld_chained_ptr_format', 'dyld_chained_import_format': 'quay_dyld_chained_import_format', 'ChainedFixupPointerGeneric': 'quay_ChainedFixupPointerGeneric', 'dyld_chained_import': 'quay_dyld_chained_import', '_FIELDS': 'quay__FIELDS', 'dyld_chained_import_addend': 'quay_dyld_chained_import_addend', 'dyld_chained_import_addend64': 'quay_dyld_chained_import_addend64', 'dyld_chained_ptr': 'quay_dyld_chained_ptr', 'dyld_chained_ptr_arm64e': 'quay_dyld_chained_ptr_arm64e', 'dyld_chained_ptr_arm64e_rebase': 'quay_dyld_chained_ptr_arm64e_rebase', 'dyld_chained_ptr_arm64e_bind': 'quay_dyld_chained_ptr_arm64e_bind', 'dyld_chained_ptr_arm64e_auth_rebase': 'quay_dyld_chained_ptr_arm64e_auth_rebase', 'dyld_chained_ptr_arm64e_auth_bind': 'quay_dyld_chained_ptr_arm64e_auth_bind', 'dyld_chained_ptr_64': 'quay_dyld_chained_ptr_64', 'dyld_chained_ptr_64_rebase': 'quay_dyld_chained_ptr_64_rebase', 'dyld_chained_ptr_64_bind': 'quay_dyld_chained_ptr_64_bind', 'dyld_chained_ptr_arm64e_bind24': 'quay_dyld_chained_ptr_arm64e_bind24', 'dyld_chained_ptr_arm64e_auth_bind24': 'quay_dyld_chained_ptr_arm64e_auth_bind24', 'dyld_chained_ptr_32_rebase': 'quay_dyld_chained_ptr_32_rebase', 'dyld_chained_ptr_32_bind': 'quay_dyld_chained_ptr_32_bind', 'dyld_chained_ptr_32_cache_rebase': 'quay_dyld_chained_ptr_32_cache_rebase', 'dyld_chained_ptr_32_firmware_rebase': 'quay_dyld_chained_ptr_32_firmware_rebase', 'ChainedPointerArm64E': 'quay_ChainedPointerArm64E', 'ChainedPointerGeneric64': 'quay_ChainedPointerGeneric64', 'ChainedPointerGeneric32': 'quay_ChainedPointerGeneric32', 'ChainedFixupPointer64Union': 'quay_ChainedFixupPointer64Union', 'ChainedFixupPointer32': 'quay_ChainedFixupPointer32', 'ChainedFixupPointer64': 'quay_ChainedFixupPointer64', 'ChainedFixupKernel64': 'quay_ChainedFixupKernel64', 'fixups_version': 'quay_fixups_version', 'starts_offset': 'quay_starts_offset', 'imports_offset': 'quay_imports_offset', 'symbols_offset': 'quay_symbols_offset', 'imports_count': 'quay_imports_count', 'imports_format': 'quay_imports_format', 'symbols_format': 'quay_symbols_format', 'seg_count': 'quay_seg_count', 'seg_info_offset': 'quay_seg_info_offset', 'pointer_format': 'quay_pointer_format', 'segment_offset': 'quay_segment_offset', 'max_valid_pointer': 'quay_max_valid_pointer', 'page_count': 'quay_page_count', 'page_starts': 'quay_page_starts', 'starts_count': 'quay_starts_count', 'chain_starts': 'quay_chain_starts', 'lib_ordinal': 'quay_lib_ordinal', 'weak_import': 'quay_weak_import', 'name_offset': 'quay_name_offset', 'addend': 'quay_addend', 'ptr': 'quay_ptr', 'bind': 'quay_bind', 'auth': 'quay_auth', 'high8': 'quay_high8', 'next': 'quay_next', 'zero': 'quay_zero', 'diversity': 'quay_diversity', 'addrDiv': 'quay_addrDiv', 'key': 'quay_key', 'generic32': 'quay_generic32', 'generic64': 'quay_generic64', 'cacheLevel': 'quay_cacheLevel', 'LoadCommand': 'quay_LoadCommand', 'SegmentLoadCommand': 'quay_SegmentLoadCommand', 'SymtabLoadCommand': 'quay_SymtabLoadCommand', 'symtab_offset': 'quay_symtab_offset', 'symtab_entry_count': 'quay_symtab_entry_count', 'string_table_offset': 'quay_string_table_offset', 'string_table_size': 'quay_string_table_size', 'MH_FLAGS': 'quay_MH_FLAGS', 'MH_FILETYPE': 'quay_MH_FILETYPE', 'LOAD_COMMAND': 'quay_LOAD_COMMAND', 'S_FLAGS_MASKS': 'quay_S_FLAGS_MASKS', 'SectionType': 'quay_SectionType', 'SectionAttributesUser': 'quay_SectionAttributesUser', 'SectionAttributesSys': 'quay_SectionAttributesSys', 'CPUType': 'quay_CPUType', 'CPUSubTypeX86': 'quay_CPUSubTypeX86', 'CPUSubTypeX86_64': 'quay_CPUSubTypeX86_64', 'CPUSubTypeARM': 'quay_CPUSubTypeARM', 'CPUSubTypeARM64': 'quay_CPUSubTypeARM64', 'CPUSubTypeSPARC': 'quay_CPUSubTypeSPARC', 'CPUSubTypePowerPC': 'quay_CPUSubTypePowerPC', 'CPUSubTypeARM6432': 'quay_CPUSubTypeARM6432', 'fat_header': 'quay_fat_header', 'fat_arch': 'quay_fat_arch', 'mach_header_64': 'quay_mach_header_64', 'unk_command': 'quay_unk_command', 'segment_command': 'quay_segment_command', 'segment_command_64': 'quay_segment_command_64', 'section': 'quay_section', 'section_64': 'quay_section_64', 'symtab_command': 'quay_symtab_command', 'dysymtab_command': 'quay_dysymtab_command', 'dylib_command': 'quay_dylib_command', 'dylinker_command': 'quay_dylinker_command', 'sub_client_command': 'quay_sub_client_command', 'uuid_command': 'quay_uuid_command', 'uuid_field_composer': 'quay_uuid_field_composer', 'build_version_command': 'quay_build_version_command', 'entry_point_command': 'quay_entry_point_command', 'rpath_command': 'quay_rpath_command', 'source_version_command': 'quay_source_version_command', 'linkedit_data_command': 'quay_linkedit_data_command', 'dyld_info_command': 'quay_dyld_info_command', 'symtab_entry_32': 'quay_symtab_entry_32', 'symtab_entry': 'quay_symtab_entry', 'version_min_command': 'quay_version_min_command', 'encryption_info_command': 'quay_encryption_info_command', 'encryption_info_command_64': 'quay_encryption_info_command_64', 'thread_command': 'quay_thread_command', 'nfat_archs': 'quay_nfat_archs', 'cpu_type': 'quay_cpu_type', 'cpu_subtype': 'quay_cpu_subtype', 'loadcnt': 'quay_loadcnt', 'loadsize': 'quay_loadsize', 'cmdsize': 'quay_cmdsize', 'segname': 'quay_segname', 'vmaddr': 'quay_vmaddr', 'vmsize': 'quay_vmsize', 'fileoff': 'quay_fileoff', 'filesize': 'quay_filesize', 'maxprot': 'quay_maxprot', 'initprot': 'quay_initprot', 'nsects': 'quay_nsects', 'sectname': 'quay_sectname', 'addr': 'quay_addr', 'reloff': 'quay_reloff', 'nreloc': 'quay_nreloc', 'reserved1': 'quay_reserved1', 'reserved2': 'quay_reserved2', 'reserved3': 'quay_reserved3', 'symoff': 'quay_symoff', 'nsyms': 'quay_nsyms', 'stroff': 'quay_stroff', 'strsize': 'quay_strsize', 'ilocalsym': 'quay_ilocalsym', 'nlocalsym': 'quay_nlocalsym', 'iextdefsym': 'quay_iextdefsym', 'nextdefsym': 'quay_nextdefsym', 'iundefsym': 'quay_iundefsym', 'nundefsym': 'quay_nundefsym', 'tocoff': 'quay_tocoff', 'ntoc': 'quay_ntoc', 'modtaboff': 'quay_modtaboff', 'nmodtab': 'quay_nmodtab', 'extrefsymoff': 'quay_extrefsymoff', 'nextrefsyms': 'quay_nextrefsyms', 'indirectsymoff': 'quay_indirectsymoff', 'nindirectsyms': 'quay_nindirectsyms', 'extreloff': 'quay_extreloff', 'nextrel': 'quay_nextrel', 'locreloff': 'quay_locreloff', 'nlocrel': 'quay_nlocrel', 'timestamp': 'quay_timestamp', 'current_version': 'quay_current_version', 'compatibility_version': 'quay_compatibility_version', 'sdk': 'quay_sdk', 'ntools': 'quay_ntools', 'entryoff': 'quay_entryoff', 'stacksize': 'quay_stacksize', 'path': 'quay_path', 'dataoff': 'quay_dataoff', 'datasize': 'quay_datasize', 'rebase_off': 'quay_rebase_off', 'rebase_size': 'quay_rebase_size', 'bind_off': 'quay_bind_off', 'bind_size': 'quay_bind_size', 'weak_bind_off': 'quay_weak_bind_off', 'weak_bind_size': 'quay_weak_bind_size', 'lazy_bind_off': 'quay_lazy_bind_off', 'lazy_bind_size': 'quay_lazy_bind_size', 'export_off': 'quay_export_off', 'export_size': 'quay_export_size', 'str_index': 'quay_str_index', 'sect_index': 'quay_sect_index', 'cryptoff': 'quay_cryptoff', 'cryptsize': 'quay_cryptsize', 'cryptid': 'quay_cryptid', 'pad': 'quay_pad', 'flavor': 'quay_flavor', 'cmdisze': 'quay_cmdisze', 'ProtocolDescriptor': 'quay_ProtocolDescriptor', 'ProtocolConformanceDescriptor': 'quay_ProtocolConformanceDescriptor', 'EnumDescriptor': 'quay_EnumDescriptor', 'StructDescriptor': 'quay_StructDescriptor', 'ClassDescriptor': 'quay_ClassDescriptor', 'FieldDescriptor': 'quay_FieldDescriptor', 'FieldRecord': 'quay_FieldRecord', 'AssociatedTypeRecord': 'quay_AssociatedTypeRecord', 'AssociatedTypeDescriptor': 'quay_AssociatedTypeDescriptor', 'BuiltinTypeDescriptor': 'quay_BuiltinTypeDescriptor', 'CaptureTypeRecord': 'quay_CaptureTypeRecord', 'MetadataSourceRecord': 'quay_MetadataSourceRecord', 'CaptureDescriptor': 'quay_CaptureDescriptor', 'Replacement': 'quay_Replacement', 'ReplacementScope': 'quay_ReplacementScope', 'AutomaticReplacements': 'quay_AutomaticReplacements', 'OpaqueReplacement': 'quay_OpaqueReplacement', 'OpaqueAutomaticReplacement': 'quay_OpaqueAutomaticReplacement', 'ClassMethodListTable': 'quay_ClassMethodListTable', 'TargetMethodDescriptor': 'quay_TargetMethodDescriptor', 'ContextDescriptorKind': 'quay_ContextDescriptorKind', 'Flags': 'quay_Flags', 'Parent': 'quay_Parent', 'Name': 'quay_Name', 'NumRequirementsInSignature': 'quay_NumRequirementsInSignature', 'NumRequirements': 'quay_NumRequirements', 'AssociatedTypeNames': 'quay_AssociatedTypeNames', 'NominalTypeDescriptor': 'quay_NominalTypeDescriptor', 'ProtocolWitnessTable': 'quay_ProtocolWitnessTable', 'ConformanceFlags': 'quay_ConformanceFlags', 'AccessFunction': 'quay_AccessFunction', 'NumPayloadCasesAndPayloadSizeOffset': 'quay_NumPayloadCasesAndPayloadSizeOffset', 'NumEmptyCases': 'quay_NumEmptyCases', 'NumFields': 'quay_NumFields', 'FieldOffsetVectorOffset': 'quay_FieldOffsetVectorOffset', 'SuperclassType': 'quay_SuperclassType', 'MetadataNegativeSizeInWords': 'quay_MetadataNegativeSizeInWords', 'MetadataPositiveSizeInWords': 'quay_MetadataPositiveSizeInWords', 'NumImmediateMembers': 'quay_NumImmediateMembers', 'MangledTypeName': 'quay_MangledTypeName', 'Superclass': 'quay_Superclass', 'Kind': 'quay_Kind', 'FieldRecordSize': 'quay_FieldRecordSize', 'FieldName': 'quay_FieldName', 'SubstitutedTypename': 'quay_SubstitutedTypename', 'ConformingTypeName': 'quay_ConformingTypeName', 'ProtocolTypeName': 'quay_ProtocolTypeName', 'NumAssociatedTypes': 'quay_NumAssociatedTypes', 'AssociatedTypeRecordSize': 'quay_AssociatedTypeRecordSize', 'TypeName': 'quay_TypeName', 'Size': 'quay_Size', 'AlignmentAndFlags': 'quay_AlignmentAndFlags', 'Stride': 'quay_Stride', 'NumExtraInhabitants': 'quay_NumExtraInhabitants', 'MangledMetadataSource': 'quay_MangledMetadataSource', 'NumCaptureTypes': 'quay_NumCaptureTypes', 'NumMetadataSources': 'quay_NumMetadataSources', 'NumBindings': 'quay_NumBindings', 'ReplacedFunctionKey': 'quay_ReplacedFunctionKey', 'NewFunction': 'quay_NewFunction', 'NumReplacements': 'quay_NumReplacements', 'Replacements': 'quay_Replacements', 'Original': 'quay_Original', 'VTableOffset': 'quay_VTableOffset', 'VTableSize': 'quay_VTableSize', 'Impl': 'quay_Impl', 'Data': 'quay_Data', 'fromBase64': 'quay_fromBase64', 'asBase64': 'quay_asBase64', '_PlistParser': 'quay__PlistParser', 'parse': 'quay_parse', 'handle_entity_decl': 'quay_handle_entity_decl', 'handle_begin_element': 'quay_handle_begin_element', 'handle_end_element': 'quay_handle_end_element', 'handle_data': 'quay_handle_data', 'add_object': 'quay_add_object', 'get_data': 'quay_get_data', '_DumbXMLWriter': 'quay__DumbXMLWriter', 'begin_element': 'quay_begin_element', 'end_element': 'quay_end_element', 'simple_element': 'quay_simple_element', 'writeln': 'quay_writeln', '_PlistWriter': 'quay__PlistWriter', 'write_value': 'quay_write_value', 'write_data': 'quay_write_data', 'write_bytes': 'quay_write_bytes', 'write_dict': 'quay_write_dict', 'write_array': 'quay_write_array', 'InvalidFileException': 'quay_InvalidFileException', '_BinaryPlistParser': 'quay__BinaryPlistParser', '_get_size': 'quay__get_size', '_read_ints': 'quay__read_ints', '_read_refs': 'quay__read_refs', '_read_object': 'quay__read_object', '_BinaryPlistWriter': 'quay__BinaryPlistWriter', '_flatten': 'quay__flatten', '_getrefnum': 'quay__getrefnum', '_write_size': 'quay__write_size', '_write_object': 'quay__write_object', 'data': 'quay_data', 'stack': 'quay_stack', 'current_key': 'quay_current_key', '_use_builtin_types': 'quay__use_builtin_types', '_dict_type': 'quay__dict_type', 'parser': 'quay_parser', '_indent_level': 'quay__indent_level', 'indent': 'quay_indent', '_sort_keys': 'quay__sort_keys', '_skipkeys': 'quay__skipkeys', '_fp': 'quay__fp', '_objlist': 'quay__objlist', '_objtable': 'quay__objtable', '_objidtable': 'quay__objidtable', '_object_offsets': 'quay__object_offsets', '_ref_size': 'quay__ref_size', '_ref_format': 'quay__ref_format', '_objects': 'quay__objects', 'LogLevel': 'quay_LogLevel', 'log': 'quay_log', 'LOG_LEVEL': 'quay_LOG_LEVEL', 'LOG_FUNC': 'quay_LOG_FUNC', 'LOG_ERR': 'quay_LOG_ERR', 'get_class_from_frame': 'quay_get_class_from_frame', 'line': 'quay_line', 'debug': 'quay_debug', 'debug_more': 'quay_debug_more', 'debug_tm': 'quay_debug_tm', 'warn': 'quay_warn', 'warning': 'quay_warning', 'error': 'quay_error', 'uintptr_t': 'quay_uintptr_t', 'pad_for_64_bit_only': 'quay_pad_for_64_bit_only', 'Bitfield': 'quay_Bitfield', 'decode_bitfield': 'quay_decode_bitfield', 'StructUnion': 'quay_StructUnion', 'Struct': 'quay_Struct', 'StructFieldColorType': 'quay_StructFieldColorType', 't': 'quay_t', 't_base': 'quay_t_base', 't_token': 'quay_t_token', 't_name': 'quay_t_name', 'create_with_bytes': 'quay_create_with_bytes', 'create_with_values': 'quay_create_with_values', 'description': 'quay_description', '_default_field_render': 'quay__default_field_render', 'render_color': 'quay_render_color', 'render_indented': 'quay_render_indented', 'add_field_composer': 'quay_add_field_composer', 'pre_init': 'quay_pre_init', 'post_init': 'quay_post_init', 'size_bits': 'quay_size_bits', 'decoded_fields': 'quay_decoded_fields', 'initialized': 'quay_initialized', 'super': 'quay_super', '_fields': 'quay__fields', '_field_sizes': 'quay__field_sizes', '_field_offsets': 'quay__field_offsets', '_field_composers': 'quay__field_composers', 'off': 'quay_off', 'ScratchFile': 'quay_ScratchFile', 'copy': 'quay_copy', 'get': 'quay_get', 'read': 'quay_read', 'reset': 'quay_reset', 'sunion_test': 'quay_sunion_test', 'StructTestCase': 'quay_StructTestCase', 'test_equality_check': 'quay_test_equality_check', 'test_union': 'quay_test_union', 'BackingFileTestCase': 'quay_BackingFileTestCase', 'test_with_mmaped_and_actual_file_pointer': 'quay_test_with_mmaped_and_actual_file_pointer', 'SliceTestCase': 'quay_SliceTestCase', 'test_patch': 'quay_test_patch', 'test_find': 'quay_test_find', 'test_get_bytes': 'quay_test_get_bytes', 'test_get_str': 'quay_test_get_str', 'test_get_cstr': 'quay_test_get_cstr', 'test_decode_uleb128': 'quay_test_decode_uleb128', 'ImageHeaderTestCase': 'quay_ImageHeaderTestCase', 'test_constructable': 'quay_test_constructable', 'test_bad_load_command': 'quay_test_bad_load_command', 'test_readint': 'quay_test_readint', 'test_insert_cmd': 'quay_test_insert_cmd', 'test_remove_cmd': 'quay_test_remove_cmd', 'test_replace_load_command': 'quay_test_replace_load_command', 'MachOLoaderTestCase': 'quay_MachOLoaderTestCase', 'test_thin_type': 'quay_test_thin_type', 'test_fat_type': 'quay_test_fat_type', 'test_bad_magic': 'quay_test_bad_magic', 'test_bad_fat_offset': 'quay_test_bad_fat_offset', 'test_slice_count': 'quay_test_slice_count', 'SegmentLCTestCase': 'quay_SegmentLCTestCase', 'VMTestCase': 'quay_VMTestCase', 'test_good_16k_page_vm_map': 'quay_test_good_16k_page_vm_map', 'test_fallback_vm': 'quay_test_fallback_vm', 'test_bad_16k_page_vm_map': 'quay_test_bad_16k_page_vm_map', 'ImageTestCase': 'quay_ImageTestCase', 'test_serialization': 'quay_test_serialization', 'test_vm_realignment': 'quay_test_vm_realignment', 'test_rw_prims': 'quay_test_rw_prims', 'CodesignTestClass': 'quay_CodesignTestClass', 'test_codesigning': 'quay_test_codesigning', 'DyldTestCase': 'quay_DyldTestCase', 'test_install_name': 'quay_test_install_name', 'test_linked_images': 'quay_test_linked_images', 'field': 'quay_field', 'scratch': 'quay_scratch', 'backup': 'quay_backup', 'thin': 'quay_thin', 'fat': 'quay_fat', 'thin_lib': 'quay_thin_lib', 'signed': 'quay_signed'})
+
+def _field_names(pairs):
+    if len(pairs) > MAX_RECORD_FIELDS:
+        raise ValueError('record field count exceeds the 4096-field budget')
+    names = [name for name, _ in pairs]
+    if any(not isinstance(name, str) or not name for name in names) or len(set(names)) != len(names):
+        raise ValueError('record fields require unique nonempty names')
+
+
+def _layout(pairs, ptr_size, ancestry=()):
+    _field_names(pairs)
+    if len(ancestry) > MAX_RECORD_DEPTH:
+        raise ValueError('record nesting exceeds the 64-level budget')
+    result, offset = [], 0
+    for name, spec in pairs:
+        if type(spec) is int:
+            kind, width = spec & quay_type_mask, spec & quay_size_mask
+            if spec < 0 or kind not in (quay_type_uint, quay_type_sint, quay_type_str, quay_type_bytes):
+                raise ValueError('unknown scalar record field type')
+        elif isinstance(spec, quay_Bitfield):
+            kind, width = 'bits', spec.size
+        elif isinstance(spec, quay_pad_for_64_bit_only):
+            kind, width = 'padding', spec.size if _pointer_size(ptr_size) == 8 else 0
+        elif isinstance(spec, type) and issubclass(spec, quay_uintptr_t):
+            kind, width = 'pointer', _pointer_size(ptr_size)
+        elif isinstance(spec, type) and issubclass(spec, quay_StructUnion):
+            kind, width = 'union', _width(_name_boundary.read_attribute(spec, 'SIZE'))
+            if spec in ancestry:
+                raise ValueError('recursive union record layout')
+        elif isinstance(spec, type) and issubclass(spec, quay_Struct):
+            if spec in ancestry:
+                raise ValueError('recursive record layout')
+            nested = _schema(spec)
+            kind = 'record'
+            width = (sum(item[2] for item in _layout(nested, ptr_size, ancestry + (spec,)))
+                     if nested is not None else _width(_name_boundary.read_attribute(spec, 'SIZE')))
+        else:
+            raise TypeError('unsupported record field descriptor')
+        _width(offset + width)
+        result.append((name, spec, width, offset, kind))
+        offset += width
+    return tuple(result)
+
+
+@_name_boundary.class_contract('StructUnion', {n: 'quay_' + n for n in
+    ('size', 'types', 'load_from_bytes', 'raw')})
 class quay_StructUnion:
-    """ This class is a horrible one;
-        This struct code was not written with Unions in mind, or much in mind in general;
+    """Read-only alternative views of the same finite byte region.
 
-        This implementation of unions has a couple of rules:
-        * It can only contain structs or other unions
-        * It will implicitly assume all types are the same size and probably die horribly if that isn't true.
-
-        Create one like:
-            class MySubClass(StructUnion):
-            def __init__(): #    |size   | list of Struct types like `mach_header`, etc
-                super().__init__(8,      [my_struct_1, my_structtype_2])
-
-        Use like:
-            unionInst = MySubClass()
-            unionInst.load_from_bytes(my_epic_bytearray_that_is_properly_sized)
-            valueIWant = unionInst.my_struct_1.someFieldInIt
-
+    Union views can be smaller than their storage. The original bytes are kept
+    for lossless writes; editing a view does not silently choose a union member.
     """
+    def __init__(self, size: int, types: quay_List[object]):
+        self.size, self.types = _width(size), tuple(types)
+        if not self.types or len(self.types) > MAX_RECORD_FIELDS:
+            raise ValueError('union must have a finite nonempty member list')
+        self._raw = None
 
-    @_name_boundary.callable_contract({'self': 'quay_self_1b5b79c', 'size': 'quay_size_13f15a3', 'types': 'quay_types_b4c38d2'}, '__init__')
-    def __init__(quay_self_1b5b79c, quay_size_13f15a3: int, quay_types_b4c38d2: quay_List[object]):
-        _name_boundary.attributes(quay_self_1b5b79c)['size'] = quay_size_13f15a3
-        _name_boundary.attributes(quay_self_1b5b79c)['types'] = quay_types_b4c38d2
+    def quay_load_from_bytes(self, data, byte_order='little', ptr_size=8, _depth=0):
+        if _depth > MAX_RECORD_DEPTH:
+            raise ValueError('union nesting exceeds the 64-level budget')
+        raw = bytes(data)
+        if len(raw) < self.size:
+            raise ValueError('union input is shorter than its layout')
+        raw = raw[:self.size]
+        _order(byte_order)
+        _pointer_size(ptr_size)
+        members = {}
+        for member in self.types:
+            if not isinstance(member, type):
+                raise TypeError('union member must be a record or union type')
+            if issubclass(member, quay_Struct):
+                width = member.size(ptr_size=ptr_size)
+                if width > self.size:
+                    raise ValueError('union member is wider than its storage')
+                decoded = quay_Struct.create_with_bytes(member, raw[:width], byte_order, ptr_size, _depth=_depth+1)
+            elif issubclass(member, quay_StructUnion):
+                decoded = member()
+                if decoded.size > self.size:
+                    raise ValueError('nested union is wider than its storage')
+                decoded.load_from_bytes(raw, byte_order, ptr_size, _depth=_depth+1)
+            else:
+                raise TypeError('union member must be a record or union type')
+            members[_name_boundary.type_label(member)] = decoded
+        self._raw = raw
+        for name, decoded in members.items():
+            _name_boundary.write_attribute(self, name, decoded)
+        return self
 
-    @_name_boundary.callable_contract({'self': 'quay_self_e960c2f', 'data': 'quay_data_26e85ce'}, 'load_from_bytes')
-    def quay_load_from_bytes(quay_self_e960c2f, quay_data_26e85ce):
-        for quay_t_8c34c13 in _name_boundary.attributes(quay_self_e960c2f)['types']:
-            if issubclass(quay_t_8c34c13, quay_Struct):
-                _name_boundary.write_attribute(quay_self_e960c2f, _name_boundary.attributes(quay_t_8c34c13)['__name__'], _name_boundary.attributes(quay_Struct)['create_with_bytes'](quay_t_8c34c13, quay_data_26e85ce, 'little'))
-            elif issubclass(quay_t_8c34c13, quay_StructUnion):
-                _name_boundary.write_attribute(quay_self_e960c2f, _name_boundary.attributes(quay_t_8c34c13)['__name__'], quay_t_8c34c13())
-                _name_boundary.attributes(_name_boundary.read_attribute(quay_self_e960c2f, _name_boundary.attributes(quay_t_8c34c13)['__name__']))['load_from_bytes'](quay_data_26e85ce)
+    @property
+    def quay_raw(self):
+        if self._raw is None:
+            raise ValueError('union has not been decoded')
+        return bytearray(self._raw)
 
-    @_name_boundary.callable_contract({'self': 'quay_self_f26cc50'}, '__int__')
-    def __int__(quay_self_f26cc50):
-        return _name_boundary.attributes(quay_self_f26cc50.__class__)['size']()
+    def __int__(self):
+        return int.from_bytes(self.raw, 'little')
 
-@_name_boundary.callable_contract({'data': 'quay_data_6abf243'}, '_bytes_to_hex')
-def quay__bytes_to_hex(quay_data_6abf243) -> str:
-    return _name_boundary.attributes(quay_data_6abf243)['hex']()
 
-@_name_boundary.callable_contract({'uint': 'quay_uint_4509d55', 'bits': 'quay_bits_f45a538'}, '_uint_to_int')
-def quay__uint_to_int(quay_uint_4509d55, quay_bits_f45a538):
-    """
-    Assume an int was read from binary as an unsigned int,
+def quay__bytes_to_hex(data):
+    return data.hex()
 
-    decode it as a two's compliment signed integer
 
-    :param uint:
-    :param bits:
-    :return:
-    """
-    if quay_uint_4509d55 & 1 << quay_bits_f45a538 - 1 != 0:
-        quay_uint_4509d55 = quay_uint_4509d55 - (1 << quay_bits_f45a538)
-    return quay_uint_4509d55
+def quay__uint_to_int(uint, bits):
+    if type(bits) is not int or bits <= 0 or bits > MAX_RECORD_BYTES * 8:
+        raise ValueError('signed integer width is invalid')
+    if type(uint) is not int or not 0 <= uint < 1 << bits:
+        raise ValueError('unsigned input does not fit the signed field')
+    return uint - (1 << bits) if uint & (1 << (bits - 1)) else uint
 
-@_name_boundary.class_contract('Struct', {'StructFieldColorType': 'quay_StructFieldColorType', 't': 'quay_t', 't_base': 'quay_t_base', 't_token': 'quay_t_token', 't_name': 'quay_t_name', 'size': 'quay_size', 'create_with_bytes': 'quay_create_with_bytes', 'create_with_values': 'quay_create_with_values', 'type_name': 'quay_type_name', 'description': 'quay_description', 'raw': 'quay_raw', '_default_field_render': 'quay__default_field_render', 'render_color': 'quay_render_color', 'render_indented': 'quay_render_indented', 'serialize': 'quay_serialize', 'add_field_composer': 'quay_add_field_composer', 'pre_init': 'quay_pre_init', 'post_init': 'quay_post_init', 'CodesignInfo': 'quay_CodesignInfo', 'from_image': 'quay_from_image', 'from_values': 'quay_from_values', 'raw_bytes': 'quay_raw_bytes', 'superblob': 'quay_superblob', 'slots': 'quay_slots', 'entitlements': 'quay_entitlements', 'req_dat': 'quay_req_dat', 'MalformedMachOException': 'quay_MalformedMachOException', 'MachOAlignmentError': 'quay_MachOAlignmentError', 'VMAddressingError': 'quay_VMAddressingError', 'UnsupportedFiletypeException': 'quay_UnsupportedFiletypeException', 'NoObjCMetadataException': 'quay_NoObjCMetadataException', 'TBDGenerator': 'quay_TBDGenerator', '_generate_dict': 'quay__generate_dict', 'FatMachOGenerator': 'quay_FatMachOGenerator', '_fat_arch_for_slice': 'quay__fat_arch_for_slice', 'image': 'quay_image', 'objc_lib': 'quay_objc_lib', 'general': 'quay_general', 'dict': 'quay_dict', 'slices': 'quay_slices', 'fat_archs': 'quay_fat_archs', 'fat_head': 'quay_fat_head', 'HeaderUtils': 'quay_HeaderUtils', 'header_head_html': 'quay_header_head_html', 'header_head': 'quay_header_head', 'TypeResolver': 'quay_TypeResolver', 'find_linked': 'quay_find_linked', 'HeaderGenerator': 'quay_HeaderGenerator', 'StructHeader': 'quay_StructHeader', 'Header': 'quay_Header', 'generate_highlighted_text': 'quay_generate_highlighted_text', 'generate_html': 'quay_generate_html', '_generate_text': 'quay__generate_text', '_process_import_section': 'quay__process_import_section', 'CategoryHeader': 'quay_CategoryHeader', 'ProtocolHeader': 'quay_ProtocolHeader', 'Interface': 'quay_Interface', '_process_properties': 'quay__process_properties', '_process_ivars': 'quay__process_ivars', '_process_methods': 'quay__process_methods', 'StructDef': 'quay_StructDef', 'CategoryInterface': 'quay_CategoryInterface', 'ProtocolInterface': 'quay_ProtocolInterface', 'UmbrellaHeader': 'quay_UmbrellaHeader', 'objc_image': 'quay_objc_image', 'classmap': 'quay_classmap', 'classes': 'quay_classes', 'local_classes': 'quay_local_classes', 'local_protos': 'quay_local_protos', '_linked_cache': 'quay__linked_cache', 'type_resolver': 'quay_type_resolver', 'headers': 'quay_headers', 'text': 'quay_text', 'interface': 'quay_interface', 'objc_class': 'quay_objc_class', 'forward_declare_private_imports': 'quay_forward_declare_private_imports', 'forward_declaration_classes': 'quay_forward_declaration_classes', 'forward_declaration_protocols': 'quay_forward_declaration_protocols', 'imported_classes': 'quay_imported_classes', 'locally_imported_classes': 'quay_locally_imported_classes', 'locally_imported_protocols': 'quay_locally_imported_protocols', 'highlighted_text': 'quay_highlighted_text', 'category': 'quay_category', 'properties': 'quay_properties', 'methods': 'quay_methods', 'protocols': 'quay_protocols', 'protocol': 'quay_protocol', 'ivars': 'quay_ivars', 'structs': 'quay_structs', 'getters': 'quay_getters', 'setters': 'quay_setters', 'struct_definition': 'quay_struct_definition', 'VM': 'quay_VM', 'vm_check': 'quay_vm_check', 'add_segment': 'quay_add_segment', 'translate': 'quay_translate', 'de_translate': 'quay_de_translate', 'map_pages': 'quay_map_pages', 'MisalignedVM': 'quay_MisalignedVM', 'LinkedImage': 'quay_LinkedImage', '_get_name': 'quay__get_name', 'Image': 'quay_Image', 'vm_realign': 'quay_vm_realign', 'read_uint': 'quay_read_uint', 'read_ptr': 'quay_read_ptr', 'read_int': 'quay_read_int', 'read_bytearray': 'quay_read_bytearray', 'read_struct': 'quay_read_struct', 'read_fixed_len_str': 'quay_read_fixed_len_str', 'read_cstr': 'quay_read_cstr', 'read_uleb128': 'quay_read_uleb128', 'page_size': 'quay_page_size', 'page_size_bits': 'quay_page_size_bits', 'page_table': 'quay_page_table', 'tlb': 'quay_tlb', 'segs': 'quay_segs', 'vm_base_addr': 'quay_vm_base_addr', 'dirty': 'quay_dirty', 'fallback': 'quay_fallback', 'detag_kern_64': 'quay_detag_kern_64', 'detag_64': 'quay_detag_64', 'map': 'quay_map', 'stats': 'quay_stats', 'sorted_map': 'quay_sorted_map', 'cache': 'quay_cache', 'cmd': 'quay_cmd', 'source_image': 'quay_source_image', 'install_name': 'quay_install_name', 'weak': 'quay_weak', 'local': 'quay_local', 'slice': 'quay_slice', 'vm': 'quay_vm', 'base_name': 'quay_base_name', 'linked_images': 'quay_linked_images', 'segments': 'quay_segments', 'info': 'quay_info', 'dylib': 'quay_dylib', 'uuid': 'quay_uuid', 'codesign_info': 'quay_codesign_info', '_codesign_cmd': 'quay__codesign_cmd', 'platform': 'quay_platform', 'allowed_clients': 'quay_allowed_clients', 'rpath': 'quay_rpath', 'minos': 'quay_minos', 'sdk_version': 'quay_sdk_version', 'imports': 'quay_imports', 'exports': 'quay_exports', 'symbols': 'quay_symbols', 'import_table': 'quay_import_table', 'export_table': 'quay_export_table', 'entry_point': 'quay_entry_point', 'function_starts': 'quay_function_starts', 'thread_state': 'quay_thread_state', '_entry_off': 'quay__entry_off', 'binding_table': 'quay_binding_table', 'weak_binding_table': 'quay_weak_binding_table', 'lazy_binding_table': 'quay_lazy_binding_table', 'export_trie': 'quay_export_trie', 'chained_fixups': 'quay_chained_fixups', 'symbol_table': 'quay_symbol_table', 'struct_cache': 'quay_struct_cache', 'macho_header': 'quay_macho_header', 'ptr_size': 'quay_ptr_size', 'kmod_info_64': 'quay_kmod_info_64', '_FIELDNAMES': 'quay__FIELDNAMES', '_SIZES': 'quay__SIZES', 'SIZE': 'quay_SIZE', 'Kext': 'quay_Kext', 'EmbeddedKext': 'quay_EmbeddedKext', 'MergedKext': 'quay_MergedKext', 'KernelCache': 'quay_KernelCache', '_process_kexts_from_prelink_info': 'quay__process_kexts_from_prelink_info', '_process_kexts': 'quay__process_kexts', '_process_prelink_info': 'quay__process_prelink_info', '_process_merged_kexts': 'quay__process_merged_kexts', 'next_addr': 'quay_next_addr', 'info_version': 'quay_info_version', 'id': 'quay_id', 'name': 'quay_name', 'version': 'quay_version', 'reference_count': 'quay_reference_count', 'reference_list_addr': 'quay_reference_list_addr', 'address': 'quay_address', 'hdr_size': 'quay_hdr_size', 'start_addr': 'quay_start_addr', 'stop_addr': 'quay_stop_addr', 'prelink_info': 'quay_prelink_info', 'development_region': 'quay_development_region', 'executable_name': 'quay_executable_name', 'bundle_name': 'quay_bundle_name', 'package_type': 'quay_package_type', 'info_string': 'quay_info_string', 'version_str': 'quay_version_str', 'backing_file': 'quay_backing_file', 'backing_image': 'quay_backing_image', 'backing_slice': 'quay_backing_slice', 'mach_header': 'quay_mach_header', 'mach_kernel_file': 'quay_mach_kernel_file', 'mach_kernel': 'quay_mach_kernel', 'kexts': 'quay_kexts', 'release_type': 'quay_release_type', 'arch': 'quay_arch', 'soc': 'quay_soc', 'KToolError': 'quay_ImageQuayError', 'MachOFileCommands': 'quay_MachOFileCommands', '_open': 'quay__open', 'ent': 'quay_ent', 'insert': 'quay_insert', 'edit': 'quay_edit', 'lipo': 'quay_lipo', '_list': 'quay__list', 'dump': 'quay_dump', 'kcache': 'quay_kcache', 'trie_unwrap': 'quay_trie_unwrap', 'MachOImageLoader': 'quay_MachOImageLoader', 'SYMTAB_LOADER': 'quay_SYMTAB_LOADER', 'load': 'quay_load', '_parse_load_commands': 'quay__parse_load_commands', '_process_image': 'quay__process_image', 'SymbolType': 'quay_SymbolType', 'Symbol': 'quay_Symbol', 'SymbolTable': 'quay_SymbolTable', '_load_symbol_table': 'quay__load_symbol_table', 'ChainedFixups': 'quay_ChainedFixups', 'ExportNode': 'quay_ExportNode', 'ExportTrie': 'quay_ExportTrie', '_read_node_tree_iter': 'quay__read_node_tree_iter', 'print_tree': 'quay_print_tree', 'BindingTable': 'quay_BindingTable', '_create_action_list': 'quay__create_action_list', '_load_binding_info': 'quay__load_binding_info', 'fullname': 'quay_fullname', 'dec_type': 'quay_dec_type', 'entry': 'quay_entry', 'ordinal': 'quay_ordinal', 'types': 'quay_types', 'external': 'quay_external', 'attr': 'quay_attr', 'ext': 'quay_ext', 'table': 'quay_table', 'rebases': 'quay_rebases', 'offset': 'quay_offset', 'flags': 'quay_flags', 'children': 'quay_children', 'nodes': 'quay_nodes', 'root': 'quay_root', 'import_stack': 'quay_import_stack', 'actions': 'quay_actions', 'lookup_table': 'quay_lookup_table', 'link_table': 'quay_link_table', 'MachOFileType': 'quay_MachOFileType', 'BackingFile': 'quay_BackingFile', 'read_bytes': 'quay_read_bytes', 'write': 'quay_write', 'close': 'quay_close', 'SlicedBackingFile': 'quay_SlicedBackingFile', 'MachOFile': 'quay_MachOFile', '_load_struct': 'quay__load_struct', 'Section': 'quay_Section', 'SectionIterator': 'quay_SectionIterator', 'Segment': 'quay_Segment', '_process_sections': 'quay__process_sections', 'Slice': 'quay_Slice', 'patch': 'quay_patch', 'full_bytes_for_slice': 'quay_full_bytes_for_slice', 'find': 'quay_find', '_load_type': 'quay__load_type', '_load_subtype': 'quay__load_subtype', 'MachOImageHeader': 'quay_MachOImageHeader', 'MachOLoadCommandIterator': 'quay_MachOLoadCommandIterator', 'insert_load_command': 'quay_insert_load_command', 'remove_load_command': 'quay_remove_load_command', 'replace_load_command': 'quay_replace_load_command', 'PlatformType': 'quay_PlatformType', 'ToolType': 'quay_ToolType', 'fp': 'quay_fp', 'file': 'quay_file', 'file_object': 'quay_file_object', 'uses_mmaped_io': 'quay_uses_mmaped_io', 'magic': 'quay_magic', 'segment': 'quay_segment', 'vm_address': 'quay_vm_address', 'file_address': 'quay_file_address', 'is64': 'quay_is64', 'file_size': 'quay_file_size', 'sections': 'quay_sections', 'type': 'quay_type', 'macho_file': 'quay_macho_file', 'arch_struct': 'quay_arch_struct', 'byte_order': 'quay_byte_order', '_cstring_cache': 'quay__cstring_cache', 'dyld_header': 'quay_dyld_header', 'filetype': 'quay_filetype', 'load_commands': 'quay_load_commands', 'filename': 'quay_filename', 'header': 'quay_header', 'start': 'quay_start', 'end': 'quay_end', 'pos': 'quay_pos', 'subtype': 'quay_subtype', 'hdr': 'quay_hdr', 'ObjCImage': 'quay_ObjCImage', 'Struct_Representation': 'quay_Struct_Representation', 'EncodingType': 'quay_EncodingType', 'EncodedType': 'quay_EncodedType', 'Type': 'quay_Type', 'TypeProcessor': 'quay_TypeProcessor', 'save_struct': 'quay_save_struct', 'process': 'quay_process', 'tokenize': 'quay_tokenize', 'Ivar': 'quay_Ivar', '_renderable_type': 'quay__renderable_type', 'MethodList': 'quay_MethodList', 'CUSTOM_RMS_BASE': 'quay_CUSTOM_RMS_BASE', '_process_methlist': 'quay__process_methlist', 'Method': 'quay_Method', '_build_method_signature': 'quay__build_method_signature', 'LinkedClass': 'quay_LinkedClass', 'Class': 'quay_Class', '_load_linked_libraries': 'quay__load_linked_libraries', 'Property': 'quay_Property', 'decode_property_attributes': 'quay_decode_property_attributes', 'Category': 'quay_Category', 'Protocol': 'quay_Protocol', 'load_methods': 'quay_load_methods', 'tp': 'quay_tp', 'classlist': 'quay_classlist', 'catlist': 'quay_catlist', 'protolist': 'quay_protolist', 'class_map': 'quay_class_map', 'cat_map': 'quay_cat_map', 'prot_map': 'quay_prot_map', 'field_names': 'quay_field_names', 'fields': 'quay_fields', 'child': 'quay_child', 'pointer_count': 'quay_pointer_count', 'type_cache': 'quay_type_cache', 'typestr': 'quay_typestr', 'is_id': 'quay_is_id', 'methlist_head': 'quay_methlist_head', 'meta': 'quay_meta', 'load_errors': 'quay_load_errors', 'struct_list': 'quay_struct_list', 'sel': 'quay_sel', 'type_string': 'quay_type_string', 'imp': 'quay_imp', 'signature': 'quay_signature', 'classname': 'quay_classname', 'libname': 'quay_libname', 'superclass': 'quay_superclass', 'loc': 'quay_loc', 'linkedlibs': 'quay_linkedlibs', 'linked_classes': 'quay_linked_classes', 'fdec_classes': 'quay_fdec_classes', 'fdec_prots': 'quay_fdec_prots', 'opt_methods': 'quay_opt_methods', 'value': 'quay_value', 'return_string': 'quay_return_string', 'arguments': 'quay_arguments', 'attr_string': 'quay_attr_string', 'attributes': 'quay_attributes', 'ivarname': 'quay_ivarname', 'getter': 'quay_getter', 'setter': 'quay_setter', 'objc2_class': 'quay_objc2_class', 'FIELDS': 'quay_FIELDS', 'objc2_class_ro': 'quay_objc2_class_ro', 'objc2_meth': 'quay_objc2_meth', 'objc2_meth_list_entry': 'quay_objc2_meth_list_entry', 'objc2_meth_list': 'quay_objc2_meth_list', 'objc2_prop_list': 'quay_objc2_prop_list', 'objc2_prop': 'quay_objc2_prop', 'objc2_prot_list': 'quay_objc2_prot_list', 'objc2_prot': 'quay_objc2_prot', 'objc2_ivar_list': 'quay_objc2_ivar_list', 'objc2_ivar': 'quay_objc2_ivar', 'objc2_category': 'quay_objc2_category', 'isa': 'quay_isa', 'vtable': 'quay_vtable', 'ivar_base_start': 'quay_ivar_base_start', 'ivar_base_size': 'quay_ivar_base_size', 'reserved': 'quay_reserved', 'ivar_lyt': 'quay_ivar_lyt', 'base_meths': 'quay_base_meths', 'base_prots': 'quay_base_prots', 'weak_ivar_lyt': 'quay_weak_ivar_lyt', 'base_props': 'quay_base_props', 'selector': 'quay_selector', 'entrysize': 'quay_entrysize', 'count': 'quay_count', 'cnt': 'quay_cnt', 'prots': 'quay_prots', 'inst_meths': 'quay_inst_meths', 'class_meths': 'quay_class_meths', 'opt_inst_meths': 'quay_opt_inst_meths', 'opt_class_meths': 'quay_opt_class_meths', 'inst_props': 'quay_inst_props', 'cb': 'quay_cb', 'offs': 'quay_offs', 'align': 'quay_align', 's_class': 'quay_s_class', 'props': 'quay_props', 'Field': 'quay_Field', '_FieldDescriptor': 'quay__FieldDescriptor', 'SwiftStruct': 'quay_SwiftStruct', 'SwiftClass': 'quay_SwiftClass', 'SwiftEnum': 'quay_SwiftEnum', 'SwiftType': 'quay_SwiftType', 'SwiftImage': 'quay_SwiftImage', 'desc': 'quay_desc', 'field_desc': 'quay_field_desc', 'class_desc': 'quay_class_desc', 'kind': 'quay_kind', 'typedesc': 'quay_typedesc', 'ignore': 'quay_ignore', 'MALFORMED': 'quay_MALFORMED', 'OBJC_ERRORS': 'quay_OBJC_ERRORS', 'opts': 'quay_opts', 'DISABLE_COLOR': 'quay_DISABLE_COLOR', 'USE_SYMTAB_INSTEAD_OF_SELECTORS': 'quay_USE_SYMTAB_INSTEAD_OF_SELECTORS', 'OBJC_LOAD_ERRORS_SEND_TO_DEBUG': 'quay_OBJC_LOAD_ERRORS_SEND_TO_DEBUG', 'QueueItem': 'quay_QueueItem', 'Queue': 'quay_Queue', 'process_item': 'quay_process_item', 'go': 'quay_go', 'FileType': 'quay_FileType', 'TapiYAMLWriter': 'quay_TapiYAMLWriter', 'write_out': 'quay_write_out', 'serialize_export_arch': 'quay_serialize_export_arch', 'serialize_list': 'quay_serialize_list', 'Table': 'quay_Table', 'preheat': 'quay_preheat', 'fetch_all': 'quay_fetch_all', 'fetch': 'quay_fetch', 'render': 'quay_render', 'args': 'quay_args', 'func': 'quay_func', 'items': 'quay_items', 'returns': 'quay_returns', 'multithread': 'quay_multithread', 'titles': 'quay_titles', 'rows': 'quay_rows', 'size_pinned_columns': 'quay_size_pinned_columns', 'dividers': 'quay_dividers', 'avoid_wrapping_titles': 'quay_avoid_wrapping_titles', 'ansi_borders': 'quay_ansi_borders', 'column_pad': 'quay_column_pad', 'column_maxes': 'quay_column_maxes', 'most_recent_adjusted_maxes': 'quay_most_recent_adjusted_maxes', 'rendered_row_cache': 'quay_rendered_row_cache', 'header_cache': 'quay_header_cache', 'ColorRep': 'quay_ColorRep', 'get_attr': 'quay_get_attr', 'Attribute': 'quay_Attribute', 'HIGHLIGHTED': 'quay_HIGHLIGHTED', 'UNDERLINED': 'quay_UNDERLINED', 'COLOR_1': 'quay_COLOR_1', 'COLOR_2': 'quay_COLOR_2', 'COLOR_3': 'quay_COLOR_3', 'COLOR_4': 'quay_COLOR_4', 'COLOR_5': 'quay_COLOR_5', 'COLOR_6': 'quay_COLOR_6', 'COLOR_7': 'quay_COLOR_7', 'AttributedString': 'quay_AttributedString', 'ansi_to_attrstr': 'quay_ansi_to_attrstr', 'fix_256_code': 'quay_fix_256_code', 'set_attr': 'quay_set_attr', 'ExitProgramException': 'quay_ExitProgramException', 'RebuildAllException': 'quay_RebuildAllException', 'PresentDebugMenuException': 'quay_PresentDebugMenuException', 'PresentTitleMenuException': 'quay_PresentTitleMenuException', 'FileBrowserOpenNewFileException': 'quay_FileBrowserOpenNewFileException', 'HelpMenuException': 'quay_HelpMenuException', 'DestroyTitleMenuException': 'quay_DestroyTitleMenuException', 'PanicException': 'quay_PanicException', 'HexDumpTable': 'quay_HexDumpTable', 'LazilyProcessedTextBuffer': 'quay_LazilyProcessedTextBuffer', 'RootBox': 'quay_RootBox', 'coord_translate': 'quay_coord_translate', 'Box': 'quay_Box', 'is_click_inbounds': 'quay_is_click_inbounds', 'ScrollingDisplayBuffer': 'quay_ScrollingDisplayBuffer', 'find_clean_breakpoint': 'quay_find_clean_breakpoint', 'process_lines': 'quay_process_lines', 'draw_lines': 'quay_draw_lines', 'rendered_lines_from': 'quay_rendered_lines_from', 'View': 'quay_View', 'add_subview': 'quay_add_subview', 'redraw': 'quay_redraw', 'handle_key_press': 'quay_handle_key_press', 'handle_mouse': 'quay_handle_mouse', 'ScrollView': 'quay_ScrollView', 'Button': 'quay_Button', 'set_text': 'quay_set_text', 'action': 'quay_action', 'TitleBarMenuItem': 'quay_TitleBarMenuItem', 'HelpMenuItem': 'quay_HelpMenuItem', 'function': 'quay_function', 'FileMenuItem': 'quay_FileMenuItem', 'open': 'quay_open', 'save': 'quay_save', 'EditMenuItem': 'quay_EditMenuItem', 'delete': 'quay_delete', 'DumpMenuItem': 'quay_DumpMenuItem', 'tbd': 'quay_tbd', 'TitleBar': 'quay_TitleBar', 'MENUS_START': 'quay_MENUS_START', 'exit': 'quay_exit', 'add_menu_item': 'quay_add_menu_item', 'FooterBar': 'quay_FooterBar', 'SidebarMenuItem': 'quay_SidebarMenuItem', 'parse_mmc': 'quay_parse_mmc', 'item_list_with_children': 'quay_item_list_with_children', 'Sidebar': 'quay_Sidebar', 'WIDTH': 'quay_WIDTH', 'select_item': 'quay_select_item', 'update_item_listing': 'quay_update_item_listing', 'collapse_index': 'quay_collapse_index', 'MainMenuContentItem': 'quay_MainMenuContentItem', 'MainScreen': 'quay_MainScreen', 'set_tab_name': 'quay_set_tab_name', 'DebugMenu': 'quay_DebugMenu', 'parse_lines': 'quay_parse_lines', 'HelpMenu': 'quay_HelpMenu', 'LoaderStatusView': 'quay_LoaderStatusView', 'UserInputPrompt': 'quay_UserInputPrompt', 'MenuOverlayRenderingView': 'quay_MenuOverlayRenderingView', 'FileSystemBrowserOverlayView': 'quay_FileSystemBrowserOverlayView', 'KToolMachOLoader': 'quay_ImageQuayMachOLoader', 'SUPPORTS_256': 'quay_SUPPORTS_256', 'SUPPORTS_COLOR': 'quay_SUPPORTS_COLOR', 'HARD_FAIL': 'quay_HARD_FAIL', 'CUR_SL': 'quay_CUR_SL', 'SL_CNT': 'quay_SL_CNT', 'parent_count': 'quay_parent_count', 'contents_for_file': 'quay_contents_for_file', 'contents_for_image': 'quay_contents_for_image', 'slice_item': 'quay_slice_item', '_file': 'quay__file', 'linked': 'quay_linked', 'codesign': 'quay_codesign', 'load_cmds': 'quay_load_cmds', 'symtab': 'quay_symtab', 'vm_map': 'quay_vm_map', 'objc_items': 'quay_objc_items', 'swift_items': 'quay_swift_items', 'swift_types': 'quay_swift_types', 'get_header_item': 'quay_get_header_item', 'get_header_text': 'quay_get_header_text', 'objc_headers': 'quay_objc_headers', 'KToolKernelCacheLoader': 'quay_ImageQuayKernelCacheLoader', 'get_kexts': 'quay_get_kexts', 'KToolScreen': 'quay_ImageQuayScreen', 'ktool_dbg_print_func': 'quay_imagequay_dbg_print_func', 'ktool_dbg_print_err_func': 'quay_imagequay_dbg_print_err_func', 'setup': 'quay_setup', 'teardown': 'quay_teardown', 'update_mainscreen_text': 'quay_update_mainscreen_text', 'update_load_status': 'quay_update_load_status', 'load_image': 'quay_load_image', 'load_file': 'quay_load_file', 'rebuild_all': 'quay_rebuild_all', 'redraw_all': 'quay_redraw_all', 'handle_present_menu_exception': 'quay_handle_present_menu_exception', 'program_loop': 'quay_program_loop', 'n': 'quay_n', 'string': 'quay_string', 'attrs': 'quay_attrs', 'hex': 'quay_hex', 'lines': 'quay_lines', 'processed': 'quay_processed', 'target': 'quay_target', 'target_args': 'quay_target_args', 'stdscr': 'quay_stdscr', 'parent': 'quay_parent', 'x': 'quay_x', 'y': 'quay_y', 'width': 'quay_width', 'height': 'quay_height', 'box': 'quay_box', 'scrollcursor': 'quay_scrollcursor', 'render_attr': 'quay_render_attr', 'processed_lines': 'quay_processed_lines', 'pinned_lines': 'quay_pinned_lines', 'wrap': 'quay_wrap', 'clean_wrap': 'quay_clean_wrap', 'filled_line_count': 'quay_filled_line_count', 'draw': 'quay_draw', 'scroll_view': 'quay_scroll_view', 'scroll_view_text_buffer': 'quay_scroll_view_text_buffer', 'scroll_cursor': 'quay_scroll_cursor', 'rend_text': 'quay_rend_text', 'rend_width': 'quay_rend_width', 'menu_items': 'quay_menu_items', 'menu_item_xy_map': 'quay_menu_item_xy_map', 'pres_menu_item': 'quay_pres_menu_item', 'pres_menu_item_index': 'quay_pres_menu_item_index', 'exit_button': 'quay_exit_button', 'show_debug': 'quay_show_debug', 'debug_text': 'quay_debug_text', 'hi_text': 'quay_hi_text', 'now': 'quay_now', 'rend_name': 'quay_rend_name', 'content': 'quay_content', 'show_children': 'quay_show_children', 'selected': 'quay_selected', 'selected_index': 'quay_selected_index', 'current_sidebar_item_count': 'quay_current_sidebar_item_count', 'processed_items': 'quay_processed_items', 'info_box': 'quay_info_box', 'tabname': 'quay_tabname', 'highlighted': 'quay_highlighted', 'currently_displayed_index': 'quay_currently_displayed_index', 'status_string': 'quay_status_string', 'prompt_string': 'quay_prompt_string', 'user_input_is_string': 'quay_user_input_is_string', 'active_render_subbox': 'quay_active_render_subbox', 'response': 'quay_response', 'active_render_menu': 'quay_active_render_menu', 'active_menu_start_x': 'quay_active_menu_start_x', 'current_dir_path': 'quay_current_dir_path', 'select_file': 'quay_select_file', 'callback': 'quay_callback', 'supports_color': 'quay_supports_color', 'supported_colors': 'quay_supported_colors', 'hard_fail': 'quay_hard_fail', 'titlebar': 'quay_titlebar', 'sidebar': 'quay_sidebar', 'mainscreen': 'quay_mainscreen', 'footerbar': 'quay_footerbar', 'debug_menu': 'quay_debug_menu', 'help_menu': 'quay_help_menu', 'title_menu_overlay': 'quay_title_menu_overlay', 'loader_status': 'quay_loader_status', 'file_browser': 'quay_file_browser', 'input_overlay': 'quay_input_overlay', 'is_showing_menu_overlay': 'quay_is_showing_menu_overlay', 'active_key_handler': 'quay_active_key_handler', 'key_handlers': 'quay_key_handlers', 'mouse_handlers': 'quay_mouse_handlers', 'last_mouse_event': 'quay_last_mouse_event', 'render_group': 'quay_render_group', 'Constructable': 'quay_Constructable', 'REBASE_OPCODE': 'quay_REBASE_OPCODE', 'BINDING_OPCODE': 'quay_BINDING_OPCODE', 'BlobIndex': 'quay_BlobIndex', 'Blob': 'quay_Blob', 'SuperBlob': 'quay_SuperBlob', 'length': 'quay_length', 'blob': 'quay_blob', 'dyld_chained_fixups_header': 'quay_dyld_chained_fixups_header', 'dyld_chained_starts_in_image': 'quay_dyld_chained_starts_in_image', 'dyld_chained_starts_in_segment': 'quay_dyld_chained_starts_in_segment', 'dyld_chained_start_offsets': 'quay_dyld_chained_start_offsets', 'dyld_chained_ptr_format': 'quay_dyld_chained_ptr_format', 'dyld_chained_import_format': 'quay_dyld_chained_import_format', 'ChainedFixupPointerGeneric': 'quay_ChainedFixupPointerGeneric', 'dyld_chained_import': 'quay_dyld_chained_import', '_FIELDS': 'quay__FIELDS', 'dyld_chained_import_addend': 'quay_dyld_chained_import_addend', 'dyld_chained_import_addend64': 'quay_dyld_chained_import_addend64', 'dyld_chained_ptr': 'quay_dyld_chained_ptr', 'dyld_chained_ptr_arm64e': 'quay_dyld_chained_ptr_arm64e', 'dyld_chained_ptr_arm64e_rebase': 'quay_dyld_chained_ptr_arm64e_rebase', 'dyld_chained_ptr_arm64e_bind': 'quay_dyld_chained_ptr_arm64e_bind', 'dyld_chained_ptr_arm64e_auth_rebase': 'quay_dyld_chained_ptr_arm64e_auth_rebase', 'dyld_chained_ptr_arm64e_auth_bind': 'quay_dyld_chained_ptr_arm64e_auth_bind', 'dyld_chained_ptr_64': 'quay_dyld_chained_ptr_64', 'dyld_chained_ptr_64_rebase': 'quay_dyld_chained_ptr_64_rebase', 'dyld_chained_ptr_64_bind': 'quay_dyld_chained_ptr_64_bind', 'dyld_chained_ptr_arm64e_bind24': 'quay_dyld_chained_ptr_arm64e_bind24', 'dyld_chained_ptr_arm64e_auth_bind24': 'quay_dyld_chained_ptr_arm64e_auth_bind24', 'dyld_chained_ptr_32_rebase': 'quay_dyld_chained_ptr_32_rebase', 'dyld_chained_ptr_32_bind': 'quay_dyld_chained_ptr_32_bind', 'dyld_chained_ptr_32_cache_rebase': 'quay_dyld_chained_ptr_32_cache_rebase', 'dyld_chained_ptr_32_firmware_rebase': 'quay_dyld_chained_ptr_32_firmware_rebase', 'ChainedPointerArm64E': 'quay_ChainedPointerArm64E', 'ChainedPointerGeneric64': 'quay_ChainedPointerGeneric64', 'ChainedPointerGeneric32': 'quay_ChainedPointerGeneric32', 'ChainedFixupPointer64Union': 'quay_ChainedFixupPointer64Union', 'ChainedFixupPointer32': 'quay_ChainedFixupPointer32', 'ChainedFixupPointer64': 'quay_ChainedFixupPointer64', 'ChainedFixupKernel64': 'quay_ChainedFixupKernel64', 'fixups_version': 'quay_fixups_version', 'starts_offset': 'quay_starts_offset', 'imports_offset': 'quay_imports_offset', 'symbols_offset': 'quay_symbols_offset', 'imports_count': 'quay_imports_count', 'imports_format': 'quay_imports_format', 'symbols_format': 'quay_symbols_format', 'seg_count': 'quay_seg_count', 'seg_info_offset': 'quay_seg_info_offset', 'pointer_format': 'quay_pointer_format', 'segment_offset': 'quay_segment_offset', 'max_valid_pointer': 'quay_max_valid_pointer', 'page_count': 'quay_page_count', 'page_starts': 'quay_page_starts', 'starts_count': 'quay_starts_count', 'chain_starts': 'quay_chain_starts', 'lib_ordinal': 'quay_lib_ordinal', 'weak_import': 'quay_weak_import', 'name_offset': 'quay_name_offset', 'addend': 'quay_addend', 'ptr': 'quay_ptr', 'bind': 'quay_bind', 'auth': 'quay_auth', 'high8': 'quay_high8', 'next': 'quay_next', 'zero': 'quay_zero', 'diversity': 'quay_diversity', 'addrDiv': 'quay_addrDiv', 'key': 'quay_key', 'generic32': 'quay_generic32', 'generic64': 'quay_generic64', 'cacheLevel': 'quay_cacheLevel', 'LoadCommand': 'quay_LoadCommand', 'SegmentLoadCommand': 'quay_SegmentLoadCommand', 'SymtabLoadCommand': 'quay_SymtabLoadCommand', 'symtab_offset': 'quay_symtab_offset', 'symtab_entry_count': 'quay_symtab_entry_count', 'string_table_offset': 'quay_string_table_offset', 'string_table_size': 'quay_string_table_size', 'MH_FLAGS': 'quay_MH_FLAGS', 'MH_FILETYPE': 'quay_MH_FILETYPE', 'LOAD_COMMAND': 'quay_LOAD_COMMAND', 'S_FLAGS_MASKS': 'quay_S_FLAGS_MASKS', 'SectionType': 'quay_SectionType', 'SectionAttributesUser': 'quay_SectionAttributesUser', 'SectionAttributesSys': 'quay_SectionAttributesSys', 'CPUType': 'quay_CPUType', 'CPUSubTypeX86': 'quay_CPUSubTypeX86', 'CPUSubTypeX86_64': 'quay_CPUSubTypeX86_64', 'CPUSubTypeARM': 'quay_CPUSubTypeARM', 'CPUSubTypeARM64': 'quay_CPUSubTypeARM64', 'CPUSubTypeSPARC': 'quay_CPUSubTypeSPARC', 'CPUSubTypePowerPC': 'quay_CPUSubTypePowerPC', 'CPUSubTypeARM6432': 'quay_CPUSubTypeARM6432', 'fat_header': 'quay_fat_header', 'fat_arch': 'quay_fat_arch', 'mach_header_64': 'quay_mach_header_64', 'unk_command': 'quay_unk_command', 'segment_command': 'quay_segment_command', 'segment_command_64': 'quay_segment_command_64', 'section': 'quay_section', 'section_64': 'quay_section_64', 'symtab_command': 'quay_symtab_command', 'dysymtab_command': 'quay_dysymtab_command', 'dylib_command': 'quay_dylib_command', 'dylinker_command': 'quay_dylinker_command', 'sub_client_command': 'quay_sub_client_command', 'uuid_command': 'quay_uuid_command', 'uuid_field_composer': 'quay_uuid_field_composer', 'build_version_command': 'quay_build_version_command', 'entry_point_command': 'quay_entry_point_command', 'rpath_command': 'quay_rpath_command', 'source_version_command': 'quay_source_version_command', 'linkedit_data_command': 'quay_linkedit_data_command', 'dyld_info_command': 'quay_dyld_info_command', 'symtab_entry_32': 'quay_symtab_entry_32', 'symtab_entry': 'quay_symtab_entry', 'version_min_command': 'quay_version_min_command', 'encryption_info_command': 'quay_encryption_info_command', 'encryption_info_command_64': 'quay_encryption_info_command_64', 'thread_command': 'quay_thread_command', 'nfat_archs': 'quay_nfat_archs', 'cpu_type': 'quay_cpu_type', 'cpu_subtype': 'quay_cpu_subtype', 'loadcnt': 'quay_loadcnt', 'loadsize': 'quay_loadsize', 'cmdsize': 'quay_cmdsize', 'segname': 'quay_segname', 'vmaddr': 'quay_vmaddr', 'vmsize': 'quay_vmsize', 'fileoff': 'quay_fileoff', 'filesize': 'quay_filesize', 'maxprot': 'quay_maxprot', 'initprot': 'quay_initprot', 'nsects': 'quay_nsects', 'sectname': 'quay_sectname', 'addr': 'quay_addr', 'reloff': 'quay_reloff', 'nreloc': 'quay_nreloc', 'reserved1': 'quay_reserved1', 'reserved2': 'quay_reserved2', 'reserved3': 'quay_reserved3', 'symoff': 'quay_symoff', 'nsyms': 'quay_nsyms', 'stroff': 'quay_stroff', 'strsize': 'quay_strsize', 'ilocalsym': 'quay_ilocalsym', 'nlocalsym': 'quay_nlocalsym', 'iextdefsym': 'quay_iextdefsym', 'nextdefsym': 'quay_nextdefsym', 'iundefsym': 'quay_iundefsym', 'nundefsym': 'quay_nundefsym', 'tocoff': 'quay_tocoff', 'ntoc': 'quay_ntoc', 'modtaboff': 'quay_modtaboff', 'nmodtab': 'quay_nmodtab', 'extrefsymoff': 'quay_extrefsymoff', 'nextrefsyms': 'quay_nextrefsyms', 'indirectsymoff': 'quay_indirectsymoff', 'nindirectsyms': 'quay_nindirectsyms', 'extreloff': 'quay_extreloff', 'nextrel': 'quay_nextrel', 'locreloff': 'quay_locreloff', 'nlocrel': 'quay_nlocrel', 'timestamp': 'quay_timestamp', 'current_version': 'quay_current_version', 'compatibility_version': 'quay_compatibility_version', 'sdk': 'quay_sdk', 'ntools': 'quay_ntools', 'entryoff': 'quay_entryoff', 'stacksize': 'quay_stacksize', 'path': 'quay_path', 'dataoff': 'quay_dataoff', 'datasize': 'quay_datasize', 'rebase_off': 'quay_rebase_off', 'rebase_size': 'quay_rebase_size', 'bind_off': 'quay_bind_off', 'bind_size': 'quay_bind_size', 'weak_bind_off': 'quay_weak_bind_off', 'weak_bind_size': 'quay_weak_bind_size', 'lazy_bind_off': 'quay_lazy_bind_off', 'lazy_bind_size': 'quay_lazy_bind_size', 'export_off': 'quay_export_off', 'export_size': 'quay_export_size', 'str_index': 'quay_str_index', 'sect_index': 'quay_sect_index', 'cryptoff': 'quay_cryptoff', 'cryptsize': 'quay_cryptsize', 'cryptid': 'quay_cryptid', 'pad': 'quay_pad', 'flavor': 'quay_flavor', 'cmdisze': 'quay_cmdisze', 'ProtocolDescriptor': 'quay_ProtocolDescriptor', 'ProtocolConformanceDescriptor': 'quay_ProtocolConformanceDescriptor', 'EnumDescriptor': 'quay_EnumDescriptor', 'StructDescriptor': 'quay_StructDescriptor', 'ClassDescriptor': 'quay_ClassDescriptor', 'FieldDescriptor': 'quay_FieldDescriptor', 'FieldRecord': 'quay_FieldRecord', 'AssociatedTypeRecord': 'quay_AssociatedTypeRecord', 'AssociatedTypeDescriptor': 'quay_AssociatedTypeDescriptor', 'BuiltinTypeDescriptor': 'quay_BuiltinTypeDescriptor', 'CaptureTypeRecord': 'quay_CaptureTypeRecord', 'MetadataSourceRecord': 'quay_MetadataSourceRecord', 'CaptureDescriptor': 'quay_CaptureDescriptor', 'Replacement': 'quay_Replacement', 'ReplacementScope': 'quay_ReplacementScope', 'AutomaticReplacements': 'quay_AutomaticReplacements', 'OpaqueReplacement': 'quay_OpaqueReplacement', 'OpaqueAutomaticReplacement': 'quay_OpaqueAutomaticReplacement', 'ClassMethodListTable': 'quay_ClassMethodListTable', 'TargetMethodDescriptor': 'quay_TargetMethodDescriptor', 'ContextDescriptorKind': 'quay_ContextDescriptorKind', 'Flags': 'quay_Flags', 'Parent': 'quay_Parent', 'Name': 'quay_Name', 'NumRequirementsInSignature': 'quay_NumRequirementsInSignature', 'NumRequirements': 'quay_NumRequirements', 'AssociatedTypeNames': 'quay_AssociatedTypeNames', 'NominalTypeDescriptor': 'quay_NominalTypeDescriptor', 'ProtocolWitnessTable': 'quay_ProtocolWitnessTable', 'ConformanceFlags': 'quay_ConformanceFlags', 'AccessFunction': 'quay_AccessFunction', 'NumPayloadCasesAndPayloadSizeOffset': 'quay_NumPayloadCasesAndPayloadSizeOffset', 'NumEmptyCases': 'quay_NumEmptyCases', 'NumFields': 'quay_NumFields', 'FieldOffsetVectorOffset': 'quay_FieldOffsetVectorOffset', 'SuperclassType': 'quay_SuperclassType', 'MetadataNegativeSizeInWords': 'quay_MetadataNegativeSizeInWords', 'MetadataPositiveSizeInWords': 'quay_MetadataPositiveSizeInWords', 'NumImmediateMembers': 'quay_NumImmediateMembers', 'MangledTypeName': 'quay_MangledTypeName', 'Superclass': 'quay_Superclass', 'Kind': 'quay_Kind', 'FieldRecordSize': 'quay_FieldRecordSize', 'FieldName': 'quay_FieldName', 'SubstitutedTypename': 'quay_SubstitutedTypename', 'ConformingTypeName': 'quay_ConformingTypeName', 'ProtocolTypeName': 'quay_ProtocolTypeName', 'NumAssociatedTypes': 'quay_NumAssociatedTypes', 'AssociatedTypeRecordSize': 'quay_AssociatedTypeRecordSize', 'TypeName': 'quay_TypeName', 'Size': 'quay_Size', 'AlignmentAndFlags': 'quay_AlignmentAndFlags', 'Stride': 'quay_Stride', 'NumExtraInhabitants': 'quay_NumExtraInhabitants', 'MangledMetadataSource': 'quay_MangledMetadataSource', 'NumCaptureTypes': 'quay_NumCaptureTypes', 'NumMetadataSources': 'quay_NumMetadataSources', 'NumBindings': 'quay_NumBindings', 'ReplacedFunctionKey': 'quay_ReplacedFunctionKey', 'NewFunction': 'quay_NewFunction', 'NumReplacements': 'quay_NumReplacements', 'Replacements': 'quay_Replacements', 'Original': 'quay_Original', 'VTableOffset': 'quay_VTableOffset', 'VTableSize': 'quay_VTableSize', 'Impl': 'quay_Impl', 'Data': 'quay_Data', 'fromBase64': 'quay_fromBase64', 'asBase64': 'quay_asBase64', '_PlistParser': 'quay__PlistParser', 'parse': 'quay_parse', 'handle_entity_decl': 'quay_handle_entity_decl', 'handle_begin_element': 'quay_handle_begin_element', 'handle_end_element': 'quay_handle_end_element', 'handle_data': 'quay_handle_data', 'add_object': 'quay_add_object', 'get_data': 'quay_get_data', '_DumbXMLWriter': 'quay__DumbXMLWriter', 'begin_element': 'quay_begin_element', 'end_element': 'quay_end_element', 'simple_element': 'quay_simple_element', 'writeln': 'quay_writeln', '_PlistWriter': 'quay__PlistWriter', 'write_value': 'quay_write_value', 'write_data': 'quay_write_data', 'write_bytes': 'quay_write_bytes', 'write_dict': 'quay_write_dict', 'write_array': 'quay_write_array', 'InvalidFileException': 'quay_InvalidFileException', '_BinaryPlistParser': 'quay__BinaryPlistParser', '_get_size': 'quay__get_size', '_read_ints': 'quay__read_ints', '_read_refs': 'quay__read_refs', '_read_object': 'quay__read_object', '_BinaryPlistWriter': 'quay__BinaryPlistWriter', '_flatten': 'quay__flatten', '_getrefnum': 'quay__getrefnum', '_write_size': 'quay__write_size', '_write_object': 'quay__write_object', 'data': 'quay_data', 'stack': 'quay_stack', 'current_key': 'quay_current_key', '_use_builtin_types': 'quay__use_builtin_types', '_dict_type': 'quay__dict_type', 'parser': 'quay_parser', '_indent_level': 'quay__indent_level', 'indent': 'quay_indent', '_sort_keys': 'quay__sort_keys', '_skipkeys': 'quay__skipkeys', '_fp': 'quay__fp', '_objlist': 'quay__objlist', '_objtable': 'quay__objtable', '_objidtable': 'quay__objidtable', '_object_offsets': 'quay__object_offsets', '_ref_size': 'quay__ref_size', '_ref_format': 'quay__ref_format', '_objects': 'quay__objects', 'LogLevel': 'quay_LogLevel', 'log': 'quay_log', 'LOG_LEVEL': 'quay_LOG_LEVEL', 'LOG_FUNC': 'quay_LOG_FUNC', 'LOG_ERR': 'quay_LOG_ERR', 'get_class_from_frame': 'quay_get_class_from_frame', 'line': 'quay_line', 'debug': 'quay_debug', 'debug_more': 'quay_debug_more', 'debug_tm': 'quay_debug_tm', 'warn': 'quay_warn', 'warning': 'quay_warning', 'error': 'quay_error', 'uintptr_t': 'quay_uintptr_t', 'pad_for_64_bit_only': 'quay_pad_for_64_bit_only', 'Bitfield': 'quay_Bitfield', 'decode_bitfield': 'quay_decode_bitfield', 'StructUnion': 'quay_StructUnion', 'load_from_bytes': 'quay_load_from_bytes', 'Struct': 'quay_Struct', 'size_bits': 'quay_size_bits', 'decoded_fields': 'quay_decoded_fields', 'initialized': 'quay_initialized', 'super': 'quay_super', '_fields': 'quay__fields', '_field_sizes': 'quay__field_sizes', '_field_offsets': 'quay__field_offsets', '_field_composers': 'quay__field_composers', 'off': 'quay_off', 'ScratchFile': 'quay_ScratchFile', 'copy': 'quay_copy', 'get': 'quay_get', 'read': 'quay_read', 'reset': 'quay_reset', 'sunion_test': 'quay_sunion_test', 'StructTestCase': 'quay_StructTestCase', 'test_equality_check': 'quay_test_equality_check', 'test_union': 'quay_test_union', 'BackingFileTestCase': 'quay_BackingFileTestCase', 'test_with_mmaped_and_actual_file_pointer': 'quay_test_with_mmaped_and_actual_file_pointer', 'SliceTestCase': 'quay_SliceTestCase', 'test_patch': 'quay_test_patch', 'test_find': 'quay_test_find', 'test_get_bytes': 'quay_test_get_bytes', 'test_get_str': 'quay_test_get_str', 'test_get_cstr': 'quay_test_get_cstr', 'test_decode_uleb128': 'quay_test_decode_uleb128', 'ImageHeaderTestCase': 'quay_ImageHeaderTestCase', 'test_constructable': 'quay_test_constructable', 'test_bad_load_command': 'quay_test_bad_load_command', 'test_readint': 'quay_test_readint', 'test_insert_cmd': 'quay_test_insert_cmd', 'test_remove_cmd': 'quay_test_remove_cmd', 'test_replace_load_command': 'quay_test_replace_load_command', 'MachOLoaderTestCase': 'quay_MachOLoaderTestCase', 'test_thin_type': 'quay_test_thin_type', 'test_fat_type': 'quay_test_fat_type', 'test_bad_magic': 'quay_test_bad_magic', 'test_bad_fat_offset': 'quay_test_bad_fat_offset', 'test_slice_count': 'quay_test_slice_count', 'SegmentLCTestCase': 'quay_SegmentLCTestCase', 'VMTestCase': 'quay_VMTestCase', 'test_good_16k_page_vm_map': 'quay_test_good_16k_page_vm_map', 'test_fallback_vm': 'quay_test_fallback_vm', 'test_bad_16k_page_vm_map': 'quay_test_bad_16k_page_vm_map', 'ImageTestCase': 'quay_ImageTestCase', 'test_serialization': 'quay_test_serialization', 'test_vm_realignment': 'quay_test_vm_realignment', 'test_rw_prims': 'quay_test_rw_prims', 'CodesignTestClass': 'quay_CodesignTestClass', 'test_codesigning': 'quay_test_codesigning', 'DyldTestCase': 'quay_DyldTestCase', 'test_install_name': 'quay_test_install_name', 'test_linked_images': 'quay_test_linked_images', 'field': 'quay_field', 'scratch': 'quay_scratch', 'backup': 'quay_backup', 'thin': 'quay_thin', 'fat': 'quay_fat', 'thin_lib': 'quay_thin_lib', 'signed': 'quay_signed'})
+
+_STRUCT_NAMES = ('StructFieldColorType', 't', 't_base', 't_token', 't_name', 'size',
+    'create_with_bytes', 'create_with_values', 'type_name', 'description', 'raw',
+    '_default_field_render', 'render_color', 'render_indented', 'serialize',
+    'initialized', 'super', '_fields', 'byte_order', '_field_sizes', '_field_offsets',
+    '_field_composers', 'off', 'add_field_composer', 'pre_init', 'post_init')
+
+
+@_name_boundary.class_contract('Struct', {n: 'quay_' + n for n in _STRUCT_NAMES})
 class quay_Struct:
-    """
-    Custom namedtuple-esque Struct representation. Can be unpacked from bytes or manually created with existing
-        field values
-
-    Subclassed and passed `fields` and `sizes` values.
-
-    Fields are exposed as read-write attributes, and when written to, will update the backend
-        byte representation of the struct, accessible via the .raw attribute
-
-    """
-
-    @_name_boundary.class_contract('StructFieldColorType', {})
     class quay_StructFieldColorType(quay_enum.IntEnum):
-        BASETYPE_ITEM = 0
-        TOKEN_ITEM = 1
-        NAME_ITEM = 2
+        BASETYPE_ITEM, TOKEN_ITEM, NAME_ITEM = 0, 1, 2
 
     @staticmethod
-    @_name_boundary.callable_contract({'ty': 'quay_ty_a2219a8', 'st': 'quay_st_eaf76e4'}, 't')
-    def quay_t(quay_ty_a2219a8: 'Struct.StructFieldColorType', quay_st_eaf76e4):
-        quay_colors_aa3a15f = {_name_boundary.attributes(quay_Struct)['StructFieldColorType'].BASETYPE_ITEM: 141, _name_boundary.attributes(quay_Struct)['StructFieldColorType'].TOKEN_ITEM: 189, _name_boundary.attributes(quay_Struct)['StructFieldColorType'].NAME_ITEM: 60}
-        quay_code_91cc47e = f'\x1b[38;5;{quay_colors_aa3a15f[quay_ty_a2219a8]}m'
-        return f'{quay_code_91cc47e}{str(quay_st_eaf76e4)}\x1b[0m'
+    def quay_t(ty, text):
+        colors = {0: 141, 1: 189, 2: 60}
+        return f'\x1b[38;5;{colors[ty]}m{text}\x1b[0m'
 
     @staticmethod
-    @_name_boundary.callable_contract({'st': 'quay_st_bc7136e'}, 't_base')
-    def quay_t_base(quay_st_bc7136e):
-        return _name_boundary.attributes(quay_Struct)['t'](_name_boundary.attributes(quay_Struct)['StructFieldColorType'].BASETYPE_ITEM, quay_st_bc7136e)
+    def quay_t_base(text):
+        return quay_Struct.t(0, text)
 
     @staticmethod
-    @_name_boundary.callable_contract({'st': 'quay_st_d222225'}, 't_token')
-    def quay_t_token(quay_st_d222225):
-        return _name_boundary.attributes(quay_Struct)['t'](_name_boundary.attributes(quay_Struct)['StructFieldColorType'].TOKEN_ITEM, quay_st_d222225)
+    def quay_t_token(text):
+        return quay_Struct.t(1, text)
 
     @staticmethod
-    @_name_boundary.callable_contract({'st': 'quay_st_2bf299f'}, 't_name')
-    def quay_t_name(quay_st_2bf299f):
-        return _name_boundary.attributes(quay_Struct)['t'](_name_boundary.attributes(quay_Struct)['StructFieldColorType'].NAME_ITEM, quay_st_2bf299f)
+    def quay_t_name(text):
+        return quay_Struct.t(2, text)
 
     @classmethod
-    @_name_boundary.callable_contract({'cls': 'quay_cls_b8c004f', 'ptr_size': 'quay_ptr_size_b3ddd28'}, 'size')
-    def quay_size(quay_cls_b8c004f, quay_ptr_size_b3ddd28=None):
-        if not _name_boundary.has_attribute(quay_cls_b8c004f, 'FIELDS'):
-            return _name_boundary.attributes(quay_cls_b8c004f)['SIZE']
-        if not _name_boundary.has_attribute(quay_cls_b8c004f, '___SIZE'):
-            quay_size_eebd152 = 0
-            for quay___c7a11fd, quay_value_b5ff65b in _name_boundary.attributes(_name_boundary.attributes(quay_cls_b8c004f)['FIELDS'])['items']():
-                if isinstance(quay_value_b5ff65b, int):
-                    quay_size_eebd152 += quay_value_b5ff65b & quay_size_mask
-                elif isinstance(quay_value_b5ff65b, quay_Bitfield):
-                    quay_size_eebd152 += _name_boundary.attributes(quay_value_b5ff65b)['size']
-                elif isinstance(quay_value_b5ff65b, quay_pad_for_64_bit_only):
-                    if quay_ptr_size_b3ddd28 is None:
-                        from imagequay_support.diagnostics import quay_log as quay_log_7449644
-                        quay_err_a3a6dcc = 'Trying to get size on variable (ptr) sized type directly without a ptr_size! This is programmer error!'
-                        print(quay_err_a3a6dcc)
-                        _name_boundary.attributes(quay_log_7449644)['error'](quay_err_a3a6dcc)
-                        import traceback as quay_traceback_eb7a6c0
-                        quay_traceback_eb7a6c0.print_stack()
-                        print(quay_err_a3a6dcc)
-                        _name_boundary.attributes(quay_log_7449644)['error'](quay_err_a3a6dcc)
-                        _name_boundary.attributes(quay_log_7449644)['error']('Exiting now. Go fix this.')
-                        exit(404)
-                    if quay_ptr_size_b3ddd28 == 8:
-                        quay_size_eebd152 += _name_boundary.attributes(quay_value_b5ff65b)['size']
-                elif issubclass(quay_value_b5ff65b, quay_uintptr_t):
-                    if quay_ptr_size_b3ddd28 is None:
-                        from imagequay_support.diagnostics import quay_log as quay_log_7449644
-                        quay_err_a3a6dcc = 'Trying to get size on variable (ptr) sized type directly without a ptr_size! This is programmer error!'
-                        print(quay_err_a3a6dcc)
-                        _name_boundary.attributes(quay_log_7449644)['error'](quay_err_a3a6dcc)
-                        import traceback as quay_traceback_eb7a6c0
-                        quay_traceback_eb7a6c0.print_stack()
-                        print(quay_err_a3a6dcc)
-                        _name_boundary.attributes(quay_log_7449644)['error'](quay_err_a3a6dcc)
-                        _name_boundary.attributes(quay_log_7449644)['error']('Exiting now. Go fix this.')
-                        exit(404)
-                    quay_size_eebd152 += quay_ptr_size_b3ddd28
-                    _name_boundary.write_attribute(quay_cls_b8c004f, '___VARIABLE_SIZE', True)
-                elif issubclass(quay_value_b5ff65b, quay_StructUnion):
-                    quay_size_eebd152 += _name_boundary.attributes(quay_value_b5ff65b)['size']
-                elif issubclass(quay_value_b5ff65b, quay_Struct):
-                    if quay_value_b5ff65b == quay_cls_b8c004f:
-                        raise AssertionError(f"Recursive type definition on {_name_boundary.attributes(quay_cls_b8c004f)['__name__']}")
-                    if _name_boundary.has_attribute(quay_value_b5ff65b, 'FIELDS'):
-                        quay_size_eebd152 += _name_boundary.attributes(quay_value_b5ff65b)['size'](ptr_size=quay_ptr_size_b3ddd28)
-                    else:
-                        quay_size_eebd152 += _name_boundary.attributes(quay_value_b5ff65b)['size'](ptr_size=quay_ptr_size_b3ddd28)
-            if not _name_boundary.has_attribute(quay_cls_b8c004f, '___VARIABLE_SIZE'):
-                _name_boundary.write_attribute(quay_cls_b8c004f, '___SIZE', quay_size_eebd152)
-            return quay_size_eebd152
-        else:
-            return _name_boundary.read_attribute(quay_cls_b8c004f, '___SIZE')
+    def quay_size(cls, ptr_size=None):
+        pairs = _schema(cls)
+        if pairs is None:
+            return _width(_name_boundary.read_attribute(cls, 'SIZE'))
+        return sum(entry[2] for entry in _layout(pairs, ptr_size, (cls,)))
+
+    def __init__(self, fields=None, sizes=None, byte_order='little'):
+        pairs = _schema(type(self))
+        if pairs is None:
+            if fields is None or sizes is None:
+                raise TypeError('Struct requires a record schema')
+            fields, sizes = list(fields), list(sizes)
+            if len(fields) != len(sizes):
+                raise ValueError('record field names and widths differ in length')
+            pairs = list(zip(fields, sizes))
+        _field_names(pairs)
+        # Clone bit descriptors. Definitions are never mutated by a decode.
+        pairs = [(name, quay_Bitfield(dict(spec.fields)) if isinstance(spec, quay_Bitfield) else spec)
+                 for name, spec in pairs]
+        self.initialized, self.super, self.byte_order = False, super(), _order(byte_order)
+        self._fields = [name for name, _ in pairs]
+        self._field_sizes, self._field_offsets, self._field_composers = dict(pairs), {}, {}
+        self._ptr_size, self.off = 8, 0
 
     @staticmethod
-    @_name_boundary.callable_contract({'struct_class': 'quay_struct_class_9a9ac50', 'raw': 'quay_raw_43ae3d8', 'byte_order': 'quay_byte_order_b83317d', 'ptr_size': 'quay_ptr_size_79e76e3'}, 'create_with_bytes')
-    def quay_create_with_bytes(quay_struct_class_9a9ac50, quay_raw_43ae3d8, quay_byte_order_b83317d='little', quay_ptr_size_79e76e3=8):
-        """
-        Unpack a struct from raw bytes
-
-        :param struct_class: Struct subclass
-        :param raw: Bytes
-        :param ptr_size:
-        :param byte_order: Little/Big Endian Struct Unpacking
-        :return: struct_class Instance
-        """
-        quay_instance_2a77ad1: quay_Struct = quay_struct_class_9a9ac50(quay_byte_order_b83317d)
-        quay_current_off_e2552e9 = 0
-        quay_raw_43ae3d8 = bytearray(quay_raw_43ae3d8)
-        quay_inst_raw_a5d4b2f = bytearray()
-        quay_raw_43ae3d8 = quay_raw_43ae3d8[:_name_boundary.attributes(quay_struct_class_9a9ac50)['size'](ptr_size=quay_ptr_size_79e76e3)]
-        for quay_field_6de5119 in _name_boundary.attributes(quay_instance_2a77ad1)['_fields']:
-            quay_value_3407e6d = _name_boundary.attributes(quay_instance_2a77ad1)['_field_sizes'][quay_field_6de5119]
-            _name_boundary.attributes(quay_instance_2a77ad1)['_field_offsets'][quay_field_6de5119] = quay_current_off_e2552e9
-            quay_field_value_ffdc183 = None
-            if isinstance(quay_value_3407e6d, int):
-                quay_field_type_61b3958 = quay_type_mask & quay_value_3407e6d
-                quay_size_3669f91 = quay_size_mask & quay_value_3407e6d
-                quay_data_591750a = quay_raw_43ae3d8[quay_current_off_e2552e9:quay_current_off_e2552e9 + quay_size_3669f91]
-                if quay_field_type_61b3958 == quay_type_str:
-                    quay_field_value_ffdc183 = quay_data_591750a.decode('utf-8').replace('\x00', '')
-                elif quay_field_type_61b3958 == quay_type_bytes:
-                    quay_field_value_ffdc183 = bytes(quay_data_591750a)
-                elif quay_field_type_61b3958 == quay_type_uint:
-                    quay_field_value_ffdc183 = int.from_bytes(quay_data_591750a, quay_byte_order_b83317d)
-                elif quay_field_type_61b3958 == quay_type_sint:
-                    quay_field_value_ffdc183 = int.from_bytes(quay_data_591750a, quay_byte_order_b83317d)
-                    quay_field_value_ffdc183 = quay__uint_to_int(quay_field_value_ffdc183, quay_size_3669f91 * 8)
-            elif isinstance(quay_value_3407e6d, quay_Bitfield):
-                quay_size_3669f91 = _name_boundary.attributes(quay_value_3407e6d)['size']
-                quay_data_591750a = quay_raw_43ae3d8[quay_current_off_e2552e9:quay_current_off_e2552e9 + quay_size_3669f91]
-                assert len(quay_data_591750a) == quay_size_3669f91
-                _name_boundary.attributes(quay_value_3407e6d)['decode_bitfield'](quay_data_591750a)
-                for quay_f_6af294c, quay_fv_f16aa23 in _name_boundary.attributes(_name_boundary.attributes(quay_value_3407e6d)['decoded_fields'])['items']():
-                    _name_boundary.write_attribute(quay_instance_2a77ad1, quay_f_6af294c, quay_fv_f16aa23)
-                quay_field_value_ffdc183 = None
-            elif isinstance(quay_value_3407e6d, quay_pad_for_64_bit_only):
-                quay_size_3669f91 = _name_boundary.attributes(quay_value_3407e6d)['size'] if quay_ptr_size_79e76e3 == 8 else 0
-                if quay_size_3669f91 != 0:
-                    quay_data_591750a = quay_raw_43ae3d8[quay_current_off_e2552e9:quay_current_off_e2552e9 + quay_size_3669f91]
-                    quay_field_value_ffdc183 = int.from_bytes(quay_data_591750a, quay_byte_order_b83317d)
-                else:
-                    quay_data_591750a = bytearray()
-                    quay_field_value_ffdc183 = 0
-            elif issubclass(quay_value_3407e6d, quay_uintptr_t):
-                quay_size_3669f91 = quay_ptr_size_79e76e3
-                quay_data_591750a = quay_raw_43ae3d8[quay_current_off_e2552e9:quay_current_off_e2552e9 + quay_size_3669f91]
-                quay_field_value_ffdc183 = int.from_bytes(quay_data_591750a, quay_byte_order_b83317d)
-            elif issubclass(quay_value_3407e6d, quay_StructUnion):
-                quay_data_591750a = quay_raw_43ae3d8[quay_current_off_e2552e9:quay_current_off_e2552e9 + _name_boundary.attributes(quay_value_3407e6d)['SIZE']]
-                quay_size_3669f91 = _name_boundary.attributes(quay_value_3407e6d)['SIZE']
-                quay_field_value_ffdc183 = quay_value_3407e6d()
-                _name_boundary.attributes(quay_field_value_ffdc183)['load_from_bytes'](quay_data_591750a)
-            elif issubclass(quay_value_3407e6d, quay_Struct):
-                quay_size_3669f91 = _name_boundary.attributes(quay_value_3407e6d)['size'](ptr_size=quay_ptr_size_79e76e3)
-                quay_data_591750a = quay_raw_43ae3d8[quay_current_off_e2552e9:quay_current_off_e2552e9 + quay_size_3669f91]
-                quay_field_value_ffdc183 = _name_boundary.attributes(quay_Struct)['create_with_bytes'](quay_value_3407e6d, quay_data_591750a)
+    def quay_create_with_bytes(struct_class, raw, byte_order='little', ptr_size=8, *, _depth=0):
+        _order(byte_order)
+        _pointer_size(ptr_size)
+        if _depth > MAX_RECORD_DEPTH:
+            raise ValueError('record nesting exceeds the 64-level budget')
+        if not isinstance(struct_class, type) or not issubclass(struct_class, quay_Struct):
+            raise TypeError('record class must derive from Struct')
+        if not isinstance(raw, (bytes, bytearray, memoryview)):
+            raise TypeError('record input must contain bytes')
+        instance = struct_class(byte_order=byte_order)
+        plan = _layout(list(instance._field_sizes.items()), ptr_size, (struct_class,))
+        required = sum(item[2] for item in plan)
+        if len(raw) < required:
+            raise ValueError(f'record input needs {required} bytes, received {len(raw)}')
+        data = bytes(raw[:required])
+        instance._ptr_size = ptr_size
+        for name, spec, width, offset, kind in plan:
+            piece = data[offset:offset+width]
+            instance._field_offsets[name] = offset
+            if kind == 'bits':
+                decoded = spec.decode_bitfield(piece, byte_order)
+                for field, value in decoded.items():
+                    _name_boundary.write_attribute(instance, field, value)
+                continue
+            if kind == quay_type_str:
+                value = piece.decode('utf-8').replace('\0', '')
+            elif kind == quay_type_bytes:
+                value = piece
+            elif kind == 'record':
+                value = quay_Struct.create_with_bytes(spec, piece, byte_order, ptr_size, _depth=_depth+1)
+            elif kind == 'union':
+                value = spec().load_from_bytes(piece, byte_order, ptr_size, _depth=_depth+1)
             else:
-                raise AssertionError
-            if quay_field_value_ffdc183 is not None:
-                _name_boundary.write_attribute(quay_instance_2a77ad1, quay_field_6de5119, quay_field_value_ffdc183)
-            quay_inst_raw_a5d4b2f += quay_data_591750a
-            quay_current_off_e2552e9 += quay_size_3669f91
-        _name_boundary.attributes(quay_instance_2a77ad1)['pre_init']()
-        _name_boundary.attributes(quay_instance_2a77ad1)['initialized'] = True
-        _name_boundary.attributes(quay_instance_2a77ad1)['post_init']()
-        return quay_instance_2a77ad1
+                value = int.from_bytes(piece, byte_order, signed=kind == quay_type_sint)
+            _name_boundary.write_attribute(instance, name, value)
+        instance.pre_init()
+        instance.initialized = True
+        instance.post_init()
+        return instance
 
     @staticmethod
-    @_name_boundary.callable_contract({'struct_class': 'quay_struct_class_c9d94e2', 'values': 'quay_values_18fea82', 'byte_order': 'quay_byte_order_7501af2'}, 'create_with_values')
-    def quay_create_with_values(quay_struct_class_c9d94e2, quay_values_18fea82, quay_byte_order_7501af2='little'):
-        """
-        Pack/Create a struct given field values
-
-        :param byte_order:
-        :param struct_class: Struct subclass
-        :param values: List of values
-        :return: struct_class Instance
-        """
-        quay_instance_75e3726: quay_Struct = quay_struct_class_c9d94e2(quay_byte_order_7501af2)
-        for quay_i_730439c, quay_field_4e555f4 in enumerate(_name_boundary.attributes(quay_instance_75e3726)['_fields']):
-            _name_boundary.write_attribute(quay_instance_75e3726, quay_field_4e555f4, quay_values_18fea82[quay_i_730439c])
-        _name_boundary.attributes(quay_instance_75e3726)['pre_init']()
-        _name_boundary.attributes(quay_instance_75e3726)['initialized'] = True
-        _name_boundary.attributes(quay_instance_75e3726)['post_init']()
-        return quay_instance_75e3726
+    def quay_create_with_values(struct_class, values, byte_order='little', ptr_size=8):
+        _order(byte_order)
+        _pointer_size(ptr_size)
+        instance = struct_class(byte_order=byte_order)
+        values = list(values)
+        if len(values) != len(instance._fields):
+            raise ValueError('record value count does not match its fields')
+        instance._ptr_size = ptr_size
+        for name, value in zip(instance._fields, values):
+            spec = instance._field_sizes[name]
+            if isinstance(spec, quay_Bitfield):
+                if not isinstance(value, dict) or set(value) != set(spec.fields):
+                    raise ValueError('bitfield values must name every declared subfield')
+                for field, number in value.items():
+                    _name_boundary.write_attribute(instance, field, number)
+            else:
+                _name_boundary.write_attribute(instance, name, value)
+        instance.pre_init()
+        # Validate the whole record before exposing an initialized result.
+        instance.raw
+        instance.initialized = True
+        instance.post_init()
+        return instance
 
     @property
-    @_name_boundary.callable_contract({'self': 'quay_self_4c95717'}, 'type_name')
-    def quay_type_name(quay_self_4c95717):
-        return _name_boundary.attributes(quay_self_4c95717.__class__)['__name__']
+    def quay_type_name(self):
+        return _name_boundary.type_label(type(self))
 
     @property
-    @_name_boundary.callable_contract({'self': 'quay_self_d3ba95f'}, 'description')
-    def quay_description(quay_self_d3ba95f):
+    def quay_description(self):
         return ''
 
     @property
-    @_name_boundary.callable_contract({'self': 'quay_self_a9ddf76'}, 'raw')
-    def quay_raw(quay_self_a9ddf76):
-        quay_raw_05f27ca = bytearray()
-        for quay_field_6a5089c in _name_boundary.attributes(quay_self_a9ddf76)['_fields']:
-            quay_size_49c050d = _name_boundary.attributes(quay_self_a9ddf76)['_field_sizes'][quay_field_6a5089c]
-            quay_field_dat_22af331 = _name_boundary.read_attribute(quay_self_a9ddf76, quay_field_6a5089c)
-            quay_data_16fa9c2 = None
-            if isinstance(quay_field_dat_22af331, int):
-                quay_data_16fa9c2 = quay_field_dat_22af331.to_bytes(quay_size_49c050d, byteorder=_name_boundary.attributes(quay_self_a9ddf76)['byte_order'])
-            elif isinstance(quay_field_dat_22af331, bytearray) or isinstance(quay_field_dat_22af331, bytes):
-                quay_data_16fa9c2 = quay_field_dat_22af331
-            elif isinstance(quay_field_dat_22af331, str):
-                quay_data_16fa9c2 = quay_field_dat_22af331.encode('utf-8')
-                quay_pad_size_948bf81 = quay_size_49c050d & quay_size_mask
-                if len(quay_data_16fa9c2) < quay_pad_size_948bf81:
-                    quay_data_16fa9c2 += b'\x00' * (quay_pad_size_948bf81 - len(quay_data_16fa9c2))
-            elif issubclass(quay_size_49c050d, quay_Struct):
-                quay_data_16fa9c2 = _name_boundary.attributes(quay_field_dat_22af331)['raw']
-            assert quay_data_16fa9c2 is not None
-            quay_raw_05f27ca += bytearray(quay_data_16fa9c2)
-        return quay_raw_05f27ca
+    def quay_raw(self):
+        plan = _layout(list(self._field_sizes.items()), self._ptr_size, (type(self),))
+        chunks = []
+        for name, spec, width, offset, kind in plan:
+            if kind == 'bits':
+                word, position = 0, 0
+                for field, bits in spec.fields.items():
+                    value = _name_boundary.read_attribute(self, field)
+                    if not isinstance(value, int) or not 0 <= value < (1 << bits):
+                        raise ValueError(f'bitfield {field} does not fit its declared width')
+                    word |= value << position
+                    position += bits
+                piece = word.to_bytes(width, self.byte_order)
+            else:
+                value = _name_boundary.read_attribute(self, name)
+                if kind in ('record', 'union'):
+                    if isinstance(value, (bytes, bytearray, memoryview)):
+                        piece = bytes(value)
+                    elif isinstance(value, spec):
+                        piece = bytes(value.raw)
+                    else:
+                        raise TypeError(f'field {name} has the wrong record type')
+                elif kind == quay_type_str:
+                    if not isinstance(value, str):
+                        raise TypeError(f'field {name} must be text')
+                    piece = value.encode('utf-8')
+                    if len(piece) > width:
+                        raise ValueError(f'field {name} text exceeds its byte width')
+                    piece = piece.ljust(width, b'\0')
+                elif kind == quay_type_bytes:
+                    if not isinstance(value, (bytes, bytearray, memoryview)):
+                        raise TypeError(f'field {name} must contain bytes')
+                    piece = bytes(value)
+                elif isinstance(value, (bytes, bytearray, memoryview)):
+                    # The public builder also accepts an already encoded field.
+                    # Preserve that capability, checking the full byte width.
+                    piece = bytes(value)
+                else:
+                    if not isinstance(value, int):
+                        raise TypeError(f'field {name} must be an integer or exact-width bytes')
+                    piece = value.to_bytes(width, self.byte_order, signed=kind == quay_type_sint)
+            if len(piece) != width:
+                raise ValueError(f'field {name} byte count does not match its layout')
+            chunks.append(piece)
+        return bytearray(b''.join(chunks))
 
-    @_name_boundary.callable_contract({'self': 'quay_self_ec6bafe', 'other': 'quay_other_b51423a'}, '__eq__')
-    def __eq__(quay_self_ec6bafe, quay_other_b51423a):
+    def __eq__(self, other):
+        if not isinstance(other, quay_Struct) or type(self) is not type(other):
+            return False
         try:
-            for quay_field_d090a59 in _name_boundary.attributes(quay_self_ec6bafe)['_fields']:
-                if _name_boundary.read_attribute(quay_self_ec6bafe, quay_field_d090a59) != _name_boundary.read_attribute(quay_other_b51423a, quay_field_d090a59):
-                    return False
+            return self.serialize() == other.serialize()
         except AttributeError:
             return False
-        return True
 
-    @_name_boundary.callable_contract({'self': 'quay_self_58347df', 'other': 'quay_other_1c3a6df'}, '__ne__')
-    def __ne__(quay_self_58347df, quay_other_1c3a6df):
-        return not quay_self_58347df.__eq__(quay_other_1c3a6df)
+    def __ne__(self, other):
+        return not self == other
 
-    @_name_boundary.callable_contract({'self': 'quay_self_66479a9'}, '__repr__')
-    def __repr__(quay_self_66479a9):
-        return str(quay_self_66479a9)
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        return quay_strip_ansi(self.render_color())
 
     @staticmethod
-    @_name_boundary.callable_contract({'struct': 'quay_struct_efd5291', 'field': 'quay_field_a0858d9', 'indent_size': 'quay_indent_size_7c9fd63', 'newline_breaks': 'quay_newline_breaks_cc98853'}, '_default_field_render')
-    def quay__default_field_render(quay_struct_efd5291, quay_field_a0858d9, quay_indent_size_7c9fd63=2, quay_newline_breaks_cc98853=False):
-        try:
-            quay_attr_d1eb5a4 = _name_boundary.read_attribute(quay_struct_efd5291, quay_field_a0858d9)
-        except AttributeError:
-            quay_attr_d1eb5a4 = _name_boundary.attributes(quay_struct_efd5291)['_field_sizes'][quay_field_a0858d9]
-        if isinstance(quay_attr_d1eb5a4, str):
-            quay_field_item_1f50a0f = _name_boundary.attributes(quay_struct_efd5291)['t_base'](f'"{quay_attr_d1eb5a4}"')
-        elif isinstance(quay_attr_d1eb5a4, bytearray) or isinstance(quay_attr_d1eb5a4, bytes):
-            quay_field_item_1f50a0f = _name_boundary.attributes(quay_struct_efd5291)['t_base'](quay_attr_d1eb5a4)
-        elif isinstance(quay_attr_d1eb5a4, int):
-            quay_field_item_1f50a0f = _name_boundary.attributes(quay_struct_efd5291)['t_base'](hex(quay_attr_d1eb5a4))
-        elif isinstance(quay_attr_d1eb5a4, quay_Bitfield):
-            if quay_newline_breaks_cc98853:
-                quay_attr_d1eb5a4: quay_Bitfield = quay_attr_d1eb5a4
-                quay_field_item_1f50a0f = '\n'
-                for quay_subfield_109971b in _name_boundary.attributes(quay_attr_d1eb5a4)['fields']:
-                    quay_field_item_1f50a0f += ' ' * (quay_indent_size_7c9fd63 + 2) + quay_subfield_109971b + '=' + str(_name_boundary.read_attribute(quay_struct_efd5291, quay_subfield_109971b)) + '\n'
-            else:
-                quay_attr_d1eb5a4: quay_Bitfield = quay_attr_d1eb5a4
-                quay_field_item_1f50a0f = ''
-                for quay_subfield_109971b in _name_boundary.attributes(quay_attr_d1eb5a4)['fields']:
-                    quay_field_item_1f50a0f += quay_subfield_109971b + '=' + str(_name_boundary.read_attribute(quay_struct_efd5291, quay_subfield_109971b)) + ', '
-        elif issubclass(quay_attr_d1eb5a4.__class__, quay_Struct):
-            if quay_newline_breaks_cc98853:
-                quay_field_item_1f50a0f = '\n' + ' ' * (quay_indent_size_7c9fd63 + 2) + _name_boundary.attributes(quay_attr_d1eb5a4)['render_indented'](quay_indent_size_7c9fd63 + 2)
-            else:
-                quay_field_item_1f50a0f = _name_boundary.attributes(quay_attr_d1eb5a4)['render_color']()
-        else:
-            quay_field_item_1f50a0f = str(quay_attr_d1eb5a4)
-        return quay_field_item_1f50a0f
+    def quay__default_field_render(struct, field, indent_size=2, newline_breaks=False):
+        spec = struct._field_sizes[field]
+        if isinstance(spec, quay_Bitfield):
+            pairs = [f'{name}={_name_boundary.read_attribute(struct, name)}' for name in spec.fields]
+            return ('\n' + ''.join(' '*(indent_size+2)+p+'\n' for p in pairs)
+                    if newline_breaks else ''.join(p+', ' for p in pairs))
+        value = _name_boundary.read_attribute(struct, field, spec)
+        if isinstance(value, str):
+            return struct.t_base(f'"{value}"')
+        if isinstance(value, (bytes, bytearray)):
+            return struct.t_base(value)
+        if isinstance(value, int):
+            return struct.t_base(hex(value))
+        if isinstance(value, quay_Struct):
+            return ('\n' + ' '*(indent_size+2) + value.render_indented(indent_size+2)
+                    if newline_breaks else value.render_color())
+        return str(value)
 
-    @_name_boundary.callable_contract({'self': 'quay_self_c1c298e'}, '__str__')
-    def __str__(quay_self_c1c298e):
-        return quay_strip_ansi(_name_boundary.attributes(quay_self_c1c298e)['render_color']())
+    def _render_field(self, field, indent, breaks):
+        composer = self._field_composers.get(field, self._default_field_render)
+        args = quay_inspect.signature(composer).parameters
+        kwargs = {}
+        if 'indent_size' in args:
+            kwargs['indent_size'] = indent
+        if 'newline_breaks' in args:
+            kwargs['newline_breaks'] = breaks
+        return composer(self, field, **kwargs)
 
-    @_name_boundary.callable_contract({'self': 'quay_self_ae8ee96'}, 'render_color')
-    def quay_render_color(quay_self_ae8ee96):
-        quay_text_7d15126 = f"{_name_boundary.attributes(quay_Struct)['t_name'](_name_boundary.attributes(quay_self_ae8ee96.__class__)['__name__'])} {_name_boundary.attributes(quay_Struct)['t_token']('{')} "
-        for quay_field_023ee91 in _name_boundary.attributes(quay_self_ae8ee96)['_fields']:
-            quay_composer_f8752c8 = _name_boundary.attributes(quay_self_ae8ee96)['_field_composers'][quay_field_023ee91] if quay_field_023ee91 in _name_boundary.attributes(quay_self_ae8ee96)['_field_composers'] else _name_boundary.attributes(quay_self_ae8ee96)['_default_field_render']
-            quay_composer_args_2c56488 = _name_boundary.attributes(quay_inspect.getfullargspec(quay_composer_f8752c8))['args']
-            quay_args_c22f3ef = {}
-            if 'indent_size' in quay_composer_args_2c56488:
-                quay_args_c22f3ef['indent_size'] = 0
-            if 'newline_breaks' in quay_composer_args_2c56488:
-                quay_args_c22f3ef['newline_breaks'] = False
-            quay_field_item_d1d186a = quay_composer_f8752c8(quay_self_ae8ee96, quay_field_023ee91, **quay_args_c22f3ef)
-            quay_has_end_comma_4fbd492 = _name_boundary.attributes(quay_self_ae8ee96)['_fields'].index(quay_field_023ee91) + 1 != len(_name_boundary.attributes(quay_self_ae8ee96)['_fields'])
-            quay_text_7d15126 += f"{_name_boundary.attributes(quay_Struct)['t_token'](quay_field_023ee91)}{_name_boundary.attributes(quay_Struct)['t_token']('=')}{quay_field_item_d1d186a}{(_name_boundary.attributes(quay_Struct)['t_token'](',') if quay_has_end_comma_4fbd492 else '')} "
-        return quay_text_7d15126 + _name_boundary.attributes(quay_Struct)['t_token']('}')
+    def quay_render_color(self):
+        text = f"{self.t_name(self.type_name)} {self.t_token('{')} "
+        for index, field in enumerate(self._fields):
+            comma = self.t_token(',') if index+1 != len(self._fields) else ''
+            text += f'{self.t_token(field)}{self.t_token("=")}{self._render_field(field, 0, False)}{comma} '
+        return text + self.t_token('}')
 
-    @_name_boundary.callable_contract({'self': 'quay_self_70b7f79', 'indent_size': 'quay_indent_size_17e2179'}, 'render_indented')
-    def quay_render_indented(quay_self_70b7f79, quay_indent_size_17e2179=2) -> str:
-        quay_text_a84e854 = f"{_name_boundary.attributes(quay_Struct)['t_name'](_name_boundary.attributes(quay_self_70b7f79.__class__)['__name__'])}\n"
-        for quay_field_cacd44e in _name_boundary.attributes(quay_self_70b7f79)['_fields']:
-            quay_composer_7b1d16d = _name_boundary.attributes(quay_self_70b7f79)['_field_composers'][quay_field_cacd44e] if quay_field_cacd44e in _name_boundary.attributes(quay_self_70b7f79)['_field_composers'] else _name_boundary.attributes(quay_self_70b7f79)['_default_field_render']
-            quay_composer_args_2a70cbf = _name_boundary.attributes(quay_inspect.getfullargspec(quay_composer_7b1d16d))['args']
-            quay_args_d24f2bf = {}
-            if 'indent_size' in quay_composer_args_2a70cbf:
-                quay_args_d24f2bf['indent_size'] = quay_indent_size_17e2179
-            if 'newline_breaks' in quay_composer_args_2a70cbf:
-                quay_args_d24f2bf['newline_breaks'] = True
-            quay_field_item_8bafe04 = quay_composer_7b1d16d(quay_self_70b7f79, quay_field_cacd44e, **quay_args_d24f2bf)
-            quay_text_a84e854 += f"{' ' * quay_indent_size_17e2179}{quay_field_cacd44e}{_name_boundary.attributes(quay_Struct)['t_token']('=')}{quay_field_item_8bafe04}\n"
-        return quay_text_a84e854
+    def quay_render_indented(self, indent_size=2):
+        if type(indent_size) is not int or not 0 <= indent_size <= 4096:
+            raise ValueError('render indentation exceeds its budget')
+        text = self.t_name(self.type_name) + '\n'
+        for field in self._fields:
+            text += ' '*indent_size + field + self.t_token('=') + self._render_field(field, indent_size, True) + '\n'
+        return text
 
-    @_name_boundary.callable_contract({'self': 'quay_self_55f8b2c'}, 'serialize')
-    def quay_serialize(quay_self_55f8b2c):
-        quay_struct_dict_30d8beb = {'type': _name_boundary.attributes(quay_self_55f8b2c.__class__)['__name__']}
-        for quay_field_b5118e4 in _name_boundary.attributes(quay_self_55f8b2c)['_fields']:
-            quay_field_item_8803009 = None
-            if isinstance(_name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4), str):
-                quay_field_item_8803009 = _name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4)
-            elif isinstance(_name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4), bytearray) or isinstance(_name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4), bytes):
-                quay_field_item_8803009 = quay__bytes_to_hex(_name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4))
-            elif isinstance(_name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4), int):
-                quay_field_item_8803009 = _name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4)
-            elif issubclass(_name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4).__class__, quay_Struct):
-                quay_field_item_8803009 = _name_boundary.attributes(_name_boundary.read_attribute(quay_self_55f8b2c, quay_field_b5118e4))['serialize']()
-            quay_struct_dict_30d8beb[quay_field_b5118e4] = quay_field_item_8803009
-        return quay_struct_dict_30d8beb
+    def quay_serialize(self):
+        result = {'type': self.type_name}
+        for field in self._fields:
+            spec = self._field_sizes[field]
+            if isinstance(spec, quay_Bitfield):
+                result[field] = {name: _name_boundary.read_attribute(self, name) for name in spec.fields}
+                continue
+            value = _name_boundary.read_attribute(self, field)
+            if isinstance(value, quay_Struct):
+                value = value.serialize()
+            elif isinstance(value, (bytes, bytearray, quay_StructUnion)):
+                value = (value.raw if isinstance(value, quay_StructUnion) else value).hex()
+            elif not isinstance(value, (str, int)):
+                value = None
+            result[field] = value
+        return result
 
-    @_name_boundary.callable_contract({'self': 'quay_self_d33b758', 'fields': 'quay_fields_b68c3d8', 'sizes': 'quay_sizes_f5dfb28', 'byte_order': 'quay_byte_order_e290216'}, '__init__')
-    def __init__(quay_self_d33b758, quay_fields_b68c3d8=None, quay_sizes_f5dfb28=None, quay_byte_order_e290216='little'):
-        if _name_boundary.has_attribute(quay_self_d33b758.__class__, 'FIELDS'):
-            quay_fields_b68c3d8 = list(_name_boundary.attributes(quay_self_d33b758.__class__)['FIELDS'].keys())
-            quay_sizes_f5dfb28 = list(_name_boundary.attributes(quay_self_d33b758.__class__)['FIELDS'].values())
-        else:
-            if quay_sizes_f5dfb28 is None:
-                raise AssertionError('Do not use the bare Struct class; it must be implemented in an actual type; Missing Sizes')
-            if quay_fields_b68c3d8 is None:
-                raise AssertionError('Do not use the bare Struct class; it must be implemented in an actual type; Missing Fields')
-            quay_fields_b68c3d8 = list(quay_fields_b68c3d8)
-            quay_sizes_f5dfb28 = list(quay_sizes_f5dfb28)
-        _name_boundary.attributes(quay_self_d33b758)['initialized'] = False
-        _name_boundary.attributes(quay_self_d33b758)['super'] = super()
-        _name_boundary.attributes(quay_self_d33b758)['_fields'] = quay_fields_b68c3d8
-        _name_boundary.attributes(quay_self_d33b758)['byte_order'] = quay_byte_order_e290216
-        _name_boundary.attributes(quay_self_d33b758)['_field_sizes'] = {}
-        _name_boundary.attributes(quay_self_d33b758)['_field_offsets'] = {}
-        _name_boundary.attributes(quay_self_d33b758)['_field_composers'] = {}
-        for quay_index_02cf0a8, quay_i_44fea29 in enumerate(quay_fields_b68c3d8):
-            _name_boundary.attributes(quay_self_d33b758)['_field_sizes'][quay_i_44fea29] = quay_sizes_f5dfb28[quay_index_02cf0a8]
-        _name_boundary.attributes(quay_self_d33b758)['off'] = 0
+    def quay_add_field_composer(self, field, func):
+        if field not in self._fields or not callable(func):
+            raise ValueError('field composer requires a known field and callable')
+        self._field_composers[field] = func
 
-    @_name_boundary.callable_contract({'self': 'quay_self_882de44', 'field': 'quay_field_74ee6de', 'func': 'quay_func_4eedadd'}, 'add_field_composer')
-    def quay_add_field_composer(quay_self_882de44, quay_field_74ee6de, quay_func_4eedadd):
-        _name_boundary.attributes(quay_self_882de44)['_field_composers'][quay_field_74ee6de] = quay_func_4eedadd
-
-    @_name_boundary.callable_contract({'self': 'quay_self_12c71f9'}, 'pre_init')
-    def quay_pre_init(quay_self_12c71f9):
-        """stub for subclasses. gets called before patch code is enabled"""
+    def quay_pre_init(self):
         pass
 
-    @_name_boundary.callable_contract({'self': 'quay_self_5ec6f70'}, 'post_init')
-    def quay_post_init(quay_self_5ec6f70):
-        """stub for subclasses. gets called *after* patch code is enabled"""
+    def quay_post_init(self):
         pass
-_name_boundary.module_contract(globals(), {'int16_t': 'quay_int16_t', 'StructUnion': 'quay_StructUnion', 'int64_t': 'quay_int64_t', 'pad_for_64_bit_only': 'quay_pad_for_64_bit_only', 'ansi_escape': 'quay_ansi_escape', 'type_sint': 'quay_type_sint', 'size_mask': 'quay_size_mask', 'type_str': 'quay_type_str', '_bytes_to_hex': 'quay__bytes_to_hex', 'int8_t': 'quay_int8_t', 'int32_t': 'quay_int32_t', 'char_t': 'quay_char_t', 'uint16_t': 'quay_uint16_t', 'uint64_t': 'quay_uint64_t', 'uint8_t': 'quay_uint8_t', 'uint32_t': 'quay_uint32_t', 'Struct': 'quay_Struct', 'type_mask': 'quay_type_mask', '_uint_to_int': 'quay__uint_to_int', 'type_bytes': 'quay_type_bytes', 'inspect': 'quay_inspect', 'List': 'quay_List', 'bytes_t': 'quay_bytes_t', 'strip_ansi': 'quay_strip_ansi', 'uintptr_t': 'quay_uintptr_t', 'type_uint': 'quay_type_uint', 're': 'quay_re', 'Bitfield': 'quay_Bitfield', 'enum': 'quay_enum'})
+
+
+_name_boundary.module_contract(globals(), {name: 'quay_'+name for name in
+    ('int16_t', 'StructUnion', 'int64_t', 'pad_for_64_bit_only', 'ansi_escape',
+     'type_sint', 'size_mask', 'type_str', '_bytes_to_hex', 'int8_t', 'int32_t',
+     'char_t', 'uint16_t', 'uint64_t', 'uint8_t', 'uint32_t', 'Struct', 'type_mask',
+     '_uint_to_int', 'type_bytes', 'inspect', 'List', 'bytes_t', 'strip_ansi',
+     'uintptr_t', 'type_uint', 're', 'Bitfield', 'enum')})
