@@ -25,5 +25,7 @@
     "python -m venv .consumer",
     ".consumer/bin/python -m pip install dist/*.whl",
     ".consumer/bin/python -I checks/consume_installation.py"
-  ]
+  ],
+  "release_tag": "v1.0.1",
+  "executable_metadata": "PASS: original executable modes restored; shebang is the first line; no original source begins with encoding comment"
 }

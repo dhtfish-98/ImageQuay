@@ -1,5 +1,5 @@
-# Derived from src/ktool/ktool_script.py; original copyright and license in ORIGIN.md and LICENSE.
 #!/usr/bin/env python3
+# Derived from src/ktool/ktool_script.py; original copyright and license in ORIGIN.md and LICENSE.
 
 #
 #  ktool | MAIN SCRIPT

@@ -28,3 +28,5 @@ The GitHub workflow checks out upstream commit `faed829b838dc4060b7e36f90239a52c
 - The old test assumed a larger linker header/segment. The isolated x86_64 fixture uses clang header padding; three fat slices were built (x86_64, arm64, arm64_32). Current SDK lacks original armv7 link inputs, so armv7 fixture rebuilding is OPEN.
 
 Runtime setuptools is pinned to 80.10.2 because the retained upstream code relies on pkg_resources.
+
+Release v1.0.1 restores executable file modes and the first-line position of interpreter directives. Distribution metadata now uses derivative release 1.0.1; upstream format/version constants retain their protocol values. No algorithm changes were made.
