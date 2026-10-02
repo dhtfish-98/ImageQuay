@@ -1,0 +1,32 @@
+{
+  "sha256": "21c25d914d271b1d6e001ae8e34a40e6283bf937ee951d21fa7a8ba094deb988",
+  "scope": "ARM64_32 fixture only: names independently checked through Apple printed binding operands because modern dyld_info location-to-target ordinal reuse is inconsistent.",
+  "regular_bind_opcodes": [
+    "BIND_OPCODE_SET_DYLIB_ORDINAL_IMM(2)",
+    "BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM(0x00, dyld_stub_binder)",
+    "BIND_OPCODE_SET_TYPE_IMM(1)",
+    "BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB(0x02, 0x0000000C)",
+    "BIND_OPCODE_DO_BIND()",
+    "BIND_OPCODE_SET_DYLIB_ORDINAL_IMM(3)",
+    "BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM(0x00, _OBJC_CLASS_$_NSObject)",
+    "BIND_OPCODE_SET_SEGMENT_AND_OFFSET_ULEB(0x03, 0x000000D0)",
+    "BIND_OPCODE_DO_BIND()",
+    "BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM(0x00, _OBJC_METACLASS_$_NSObject)",
+    "BIND_OPCODE_ADD_ADDR_ULEB(0xFFFFFFFFFFFFFFE4)",
+    "BIND_OPCODE_DO_BIND()",
+    "BIND_OPCODE_DO_BIND()",
+    "BIND_OPCODE_SET_SYMBOL_TRAILING_FLAGS_IMM(0x00, __objc_empty_cache)",
+    "BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED(0x00000014)",
+    "BIND_OPCODE_DO_BIND()",
+    "BIND_OPCODE_DONE()"
+  ],
+  "binds": {
+    "49164": "dyld_stub_binder",
+    "65744": "_OBJC_CLASS_$_NSObject",
+    "65720": "_OBJC_METACLASS_$_NSObject",
+    "65724": "_OBJC_METACLASS_$_NSObject",
+    "65728": "__objc_empty_cache",
+    "65748": "__objc_empty_cache",
+    "65536": "_objc_copyStruct"
+  }
+}
