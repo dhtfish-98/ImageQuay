@@ -35,14 +35,24 @@ class _OutputFile:
         self.path = Path(path)
         self.overwrite = _allow_overwrite.get()
         self.stage = None
+        self.stream = None
+        self._descriptor = None
         self.closed = False
         self._published = False
         self._check_existing()
-        descriptor, stage = tempfile.mkstemp(prefix='.imagequay-', dir=self.path.parent)
-        self.stage = Path(stage)
-        os.fchmod(descriptor, 0o600)
-        binary = os.fdopen(descriptor, 'w+b')
-        self.stream = binary if mode == 'wb' else io.TextIOWrapper(binary, encoding='utf-8', newline='\n')
+        try:
+            descriptor, stage = tempfile.mkstemp(prefix='.imagequay-', dir=self.path.parent)
+            self.stage = Path(stage)
+            self._descriptor = descriptor
+            os.fchmod(descriptor, 0o600)
+            # Ownership transfers only after fdopen returns successfully.
+            self.stream = os.fdopen(descriptor, 'w+b')
+            self._descriptor = None
+            if mode == 'w':
+                self.stream = io.TextIOWrapper(self.stream, encoding='utf-8', newline='\n')
+        except BaseException:
+            self._discard()
+            raise
 
     def _check_existing(self):
         try:
@@ -55,7 +65,10 @@ class _OutputFile:
             raise OSError('output replacement requires an existing regular file, never a symlink or device')
 
     def __getattr__(self, name):
-        return getattr(self.stream, name)
+        stream = self.__dict__.get('stream')
+        if stream is None:
+            raise AttributeError(name)
+        return getattr(stream, name)
 
     def write(self, data):
         expected = len(data.encode('utf-8')) if isinstance(data, str) else len(data)
@@ -73,13 +86,24 @@ class _OutputFile:
         return self
 
     def _discard(self):
+        stream = self.__dict__.get('stream')
+        descriptor = self.__dict__.get('_descriptor')
+        self.stream, self._descriptor = None, None
         try:
-            self.stream.close()
+            if stream is not None:
+                stream.close()
         finally:
-            if self.stage is not None:
-                self.stage.unlink(missing_ok=True)
-                self.stage = None
-            self.closed = True
+            try:
+                if descriptor is not None:
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
+            finally:
+                if self.stage is not None:
+                    self.stage.unlink(missing_ok=True)
+                    self.stage = None
+                self.closed = True
 
     def close(self):
         if self.closed:

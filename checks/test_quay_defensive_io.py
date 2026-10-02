@@ -382,3 +382,30 @@ def test_export_deep_path_has_an_explicit_limit():
         payload.extend(b'\0\1a\0'+uleb(target))
     payload.extend(b'\0\0')
     with pytest.raises(Malformed,match='depth budget'):ExportTrie.from_image(image_view(thin(payload)),32,len(payload))
+
+
+@pytest.mark.parametrize('failure',['fchmod','fdopen','text_wrapper'])
+def test_output_initialization_failure_closes_descriptor_and_removes_stage(tmp_path,monkeypatch,failure):
+    from imagequay import file_ops
+    import gc
+    created=[]
+    actual_create=file_ops.tempfile.mkstemp
+    def create(*args,**kwargs):
+        descriptor,path=actual_create(*args,**kwargs)
+        created.append((descriptor,Path(path)))
+        return descriptor,path
+    def fail(*args,**kwargs):
+        raise OSError('injected initialization failure')
+    monkeypatch.setattr(file_ops.tempfile,'mkstemp',create)
+    if failure=='fchmod':monkeypatch.setattr(file_ops.os,'fchmod',fail)
+    elif failure=='fdopen':monkeypatch.setattr(file_ops.os,'fdopen',fail)
+    else:monkeypatch.setattr(file_ops.io,'TextIOWrapper',fail)
+    with pytest.raises(OSError,match='injected initialization failure'):
+        safe_open(tmp_path/'new','w' if failure=='text_wrapper' else 'wb')
+    gc.collect()
+    assert len(created)==1
+    descriptor,path=created[0]
+    with pytest.raises(OSError):os.fstat(descriptor)
+    assert not path.exists()
+    assert not (tmp_path/'new').exists()
+    assert not list(tmp_path.glob('.imagequay-*'))

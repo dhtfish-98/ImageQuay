@@ -12,13 +12,13 @@
 - 头部增删替换统一通过原始命令块重建，保留未知命令尾部和 Unicode 字符串；CLI 检查新增头部不覆盖声明的文件内容。
 - `signing_reader.py` 全模块改写：索引、重复 slot、长度、魔数与 blob 重叠都在声明的 SuperBlob 中检查。
 - `file_ops.py` 新架构：CLI/GUI 读取拒绝最终路径符号链接与非普通文件。输出先写同目录 0600 临时文件，成功后原子发布；默认禁止覆盖，`--overwrite` 显式替换现有普通文件；二进制元数据生成的文件名不可带路径或控制字符。调用者选择的父目录仍由调用者管理。
-- `update_reader.py` 新架构：默认无更新联网；`--check-updates` 或明确调用 API 才查询本仓库 GitHub 发布元数据，3 秒超时、1 MiB 响应限额、禁止重定向，不下载或安装软件。
+- `update_reader.py` 新架构：默认无更新联网；`--check-updates` 或明确调用 API 才查询本仓库 GitHub 发布元数据，socket I/O timeout=3 秒（不是整体硬性期限）、1 MiB 响应限额、禁止重定向，不下载或安装软件。
 - VM 页表改为按段记录的半开文件区间，避免恶意虚拟长度按页分配；零填充不映射为文件数据。记录缓存区分结构类型、字节序、物理位置与补丁代数。
 - export trie 解码改写：声明区域、路径环、终端长度与 1,048,576 次节点预算、4096 级路径深度与 64 MiB 总名称预算；修复继承算法丢失 export 地址低 7 位的问题，处理 reexport/resolver 元数据。Binding/function-start 输入使用独立字节区域与有限工作预算；Binding 字符串按 UTF-8 字节移动、SLEB 按有符号数读取。
 
 ## 当前验证与明确剩余工作
 
-159 项测试通过；822 个历史对照观察中 818 个保持一致，4 个完整 image 输出仅有已列明的 export 地址修复。4 个 fixture 的当前 export 地址另外与 Apple nm 对照；独立安装验证覆盖包身份和新的输入、export、私有输出行为；另有 6 个安装后 CLI 编辑/组合/提取/覆盖流程，输入字节保持不变。
+162 项测试通过；822 个历史对照观察中 818 个保持一致，4 个完整 image 输出仅有已列明的 export 地址修复。4 个 fixture 的当前 export 地址另外与 Apple nm 对照；独立安装验证覆盖包身份和新的输入、export、私有输出行为；另有 6 个安装后 CLI 编辑/组合/提取/覆盖流程，输入字节保持不变。
 
 本轮完成的是上述共享边界与指定算法重写。**不是全部上游算法已经重写**。ObjC/Swift 解释器、chained-fixup 的完整解释算法、SymbolTable/其余 loader 行为、GUI 布局与交互、header/TBD 生成器、plist/record 支持内核仍需要完整重写与扩展验证。Binding 的完整语义（包括 threaded apply）仍 OPEN。真实设备/固件集合、全部畸形格式与 GUI 手工交互仍 OPEN。
 
