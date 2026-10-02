@@ -1,5 +1,7 @@
 # ImageQuay
 
+防御用途、实际能力及本轮验证范围见 [DEFENSIVE_SCOPE.md](DEFENSIVE_SCOPE.md)。
+
 An attributed derivative of **ktool**, retaining the upstream behavior while reorganizing Python modules and implementation bindings. See [ORIGIN.md](ORIGIN.md) for source, copyright and licensing.
 
 ImageQuay inspects Mach-O containers, load commands, linked images, code-signing data, Objective-C metadata and Swift metadata. Its command line also retains the upstream image editing, slice combination and header/stub generation commands. The Python implementation is separated into image/container services, layout records, Swift records, support codecs and an explicit naming compatibility boundary.
