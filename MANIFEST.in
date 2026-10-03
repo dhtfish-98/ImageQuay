@@ -1,4 +1,4 @@
-include LICENSE README.md ORIGIN.md VALIDATION.md SYMBOL_MAP.json FILE_MAP.json
+include 项目文档/LICENSE 项目文档/README.md 项目文档/ORIGIN.md 项目文档/VALIDATION.md SYMBOL_MAP.json FILE_MAP.json
 recursive-include src *.py *.json *.config *.codes
 recursive-include checks *.py
 recursive-include guides *
@@ -6,11 +6,26 @@ recursive-include EXTERNAL_LICENSES *
 include requirements-test.lock DELIVERY_VALIDATION.json
 recursive-include checks/bins *
 recursive-include .github *.yml
-include THIRD_PARTY_NOTICES.md
+include 项目文档/THIRD_PARTY_NOTICES.md
 include .gitignore
 
 
 
-include DEFENSIVE_SCOPE.md
+include 项目文档/DEFENSIVE_SCOPE.md
 recursive-include checks *.json
 recursive-include checks/sources *.m *.swift
+
+# Directory layout: canonical docs and source build entry; generated trees are not sdist inputs.
+graft 项目文档
+include 构建.py 构建配置.json
+prune Build/源码
+prune Build/新构建
+prune Build/输出
+prune Build/环境
+prune Build/缓存
+prune Build/中间
+prune Build/临时
+global-exclude __pycache__ *.py[cod] .DS_Store
+
+# Original logical paths exist only in the staged compatibility view.
+include DEFENSIVE_SCOPE.md EXTERNAL_LICENSES/README.md LICENSE ORIGIN.md README.md THIRD_PARTY_NOTICES.md VALIDATION.md guides/upstream_CONTRIBUTING.md guides/upstream_index.rst guides/upstream_ktool.rst guides/upstream_quickstart.rst guides/upstream_structs.rst

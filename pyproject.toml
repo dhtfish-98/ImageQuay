@@ -5,9 +5,9 @@ build-backend="setuptools.build_meta"
 name="imagequay"
 version="1.0.4"
 description="ImageQuay attributed derivative for offline developer analysis"
-readme="README.md"
+readme="项目文档/README.md"
 requires-python=">=3.9"
-license={file="LICENSE"}
+license={file="项目文档/LICENSE"}
 dependencies=["Pygments==2.21.0", "packaging==26.3", "windows-curses>=2.3.1;sys_platform==\"win32\""]
 [project.optional-dependencies]
 test=["pytest"]
@@ -25,8 +25,9 @@ testpaths=["checks"]
 build_py="imagequay_delivery_build.DeliveryBuild"
 
 [tool.setuptools]
+license-files = ["EXTERNAL_LICENSES/CPYTHON_LICENSE", "EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE", "项目文档/LICENSE"]
 py-modules=["imagequay_delivery_build"]
 
 [tool.setuptools.data-files]
-"share/imagequay"=["README.md", "ORIGIN.md", "VALIDATION.md", "DEFENSIVE_SCOPE.md", "THIRD_PARTY_NOTICES.md"]
-"share/imagequay/licenses"=["LICENSE", "EXTERNAL_LICENSES/CPYTHON_LICENSE", "EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE"]
+"share/imagequay"=["项目文档/README.md", "项目文档/ORIGIN.md", "项目文档/VALIDATION.md", "项目文档/DEFENSIVE_SCOPE.md", "项目文档/THIRD_PARTY_NOTICES.md"]
+"share/imagequay/licenses"=["项目文档/LICENSE", "EXTERNAL_LICENSES/CPYTHON_LICENSE", "EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE"]

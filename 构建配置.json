@@ -1,0 +1,70 @@
+{
+  "schema": "project-build-layout.v1",
+  "project": "ImageQuay",
+  "author": "dhtfish98",
+  "kind": "python",
+  "base_public_commit": "cc6e24c5f78e27a2a6b776cc9b57f7fe2e78ee57",
+  "restored_inputs": [
+    {
+      "original": "DEFENSIVE_SCOPE.md",
+      "stored": "项目文档/DEFENSIVE_SCOPE.md",
+      "sha256": "2abd5eee3dcd04a33332e545fad8fc0b52bf951d6a1fb0e2dfa75ad2932e87af"
+    },
+    {
+      "original": "EXTERNAL_LICENSES/README.md",
+      "stored": "项目文档/EXTERNAL_LICENSES/README.md",
+      "sha256": "85551a0b13225d934378417ace864876f6df008f1f3f1f84206fb945f28ab3ed"
+    },
+    {
+      "original": "LICENSE",
+      "stored": "项目文档/LICENSE",
+      "sha256": "df589e0fde440fe0b2d613e18200f2d7c56801984cc303485e4d4caa3bf6e7b3"
+    },
+    {
+      "original": "ORIGIN.md",
+      "stored": "项目文档/ORIGIN.md",
+      "sha256": "38d60662fc6ccc6bc7a2de3f6c28cdef44f690d97560ede03c4219f5ca3410fe"
+    },
+    {
+      "original": "README.md",
+      "stored": "项目文档/README.md",
+      "sha256": "749b5a23edb1c15311b4fa1affc556036a8606f8f64277b2422d56254e112206"
+    },
+    {
+      "original": "THIRD_PARTY_NOTICES.md",
+      "stored": "项目文档/THIRD_PARTY_NOTICES.md",
+      "sha256": "275b332a554a142354974e3dfebca5b19212a10ead93dfa195901118c78a8dcf"
+    },
+    {
+      "original": "VALIDATION.md",
+      "stored": "项目文档/VALIDATION.md",
+      "sha256": "50fb83b541a3a1e7ed9c4f704f275748e1e2116fa2e2808ea1ca33e58ff63815"
+    },
+    {
+      "original": "guides/upstream_CONTRIBUTING.md",
+      "stored": "项目文档/guides/upstream_CONTRIBUTING.md",
+      "sha256": "c91172cc1971815775d18fee5f21ccfe2e33586651d12624ca30c7eaca1cf082"
+    },
+    {
+      "original": "guides/upstream_index.rst",
+      "stored": "项目文档/guides/upstream_index.rst",
+      "sha256": "c7b26e408ead4bd5ab4293ab1df9565c7088be6de2b107677dd7aa47f5c2b670"
+    },
+    {
+      "original": "guides/upstream_ktool.rst",
+      "stored": "项目文档/guides/upstream_ktool.rst",
+      "sha256": "87a47c3b327bd44fdad537595679ccbf0019b66f6905e4b61e0724e289c7ab69"
+    },
+    {
+      "original": "guides/upstream_quickstart.rst",
+      "stored": "项目文档/guides/upstream_quickstart.rst",
+      "sha256": "0de0cd9635d2ba6622dc7692a7a5eebf7b40b69ff4cc3985384061fbf948d68b"
+    },
+    {
+      "original": "guides/upstream_structs.rst",
+      "stored": "项目文档/guides/upstream_structs.rst",
+      "sha256": "41f1b39f537c6ce8666208541b202660e8d045f5f9e9754fb8025b24edcca3a7"
+    }
+  ],
+  "platform_entries": []
+}
