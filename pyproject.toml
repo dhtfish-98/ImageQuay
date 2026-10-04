@@ -3,7 +3,8 @@ requires=["setuptools==80.10.2", "wheel==0.48.0"]
 build-backend="setuptools.build_meta"
 [project]
 name="imagequay"
-version="1.0.4"
+version="1.0.5"
+authors=[{name="dhtfish98"}]
 description="ImageQuay attributed derivative for offline developer analysis"
 readme="项目文档/README.md"
 requires-python=">=3.9"

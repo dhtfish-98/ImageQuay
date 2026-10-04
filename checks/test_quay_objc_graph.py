@@ -196,6 +196,21 @@ def apple_method_observations(output):
         re.findall(r'0x([0-9A-Fa-f]+)\s+([+-])\[([^ ]+) ([^\]]+)\]',output)}
 
 
+def apple_arm64_32_empty_objc_output(output,path):
+    lines=[line.strip() for line in output.splitlines()]
+    header=[str(path)+' [arm64_32]:','-objc:']
+    return lines==header or lines==header+['@interface (null) : (null)','@end']
+
+
+def test_arm64_32_apple_empty_objc_output_shapes_are_exact():
+    path=Path('/local/testbin1.fat')
+    header=f'{path} [arm64_32]:\n    -objc:\n'
+    assert apple_arm64_32_empty_objc_output(header,path)
+    assert apple_arm64_32_empty_objc_output(header+'    @interface (null) : (null)\n    @end\n',path)
+    assert not apple_arm64_32_empty_objc_output(header+'    @interface Other : NSObject\n    @end\n',path)
+    assert not apple_arm64_32_empty_objc_output(header+'    @interface (null) : (null)\n    - (void)unexpected;\n    @end\n',path)
+
+
 @pytest.mark.skipif(sys.platform!='darwin',reason='Apple dyld_info supplies a static metadata oracle')
 @pytest.mark.parametrize('filename',['testbin1','testbin1.signed','testlib1.dylib','testbin1.fat'])
 def test_all_six_legacy_slices_objc_methods_match_apple_tool_and_preserve_inputs(filename):
@@ -210,9 +225,9 @@ def test_all_six_legacy_slices_objc_methods_match_apple_tool_and_preserve_inputs
         expected=apple_method_observations(tool)
         if arch=='arm64_32' and not expected:
             assert before=='21c25d914d271b1d6e001ae8e34a40e6283bf937ee951d21fa7a8ba094deb988'
-            # This tool omits ARM64_32 ObjC entirely. Require that exact empty
-            # shape, then use nm labels and otool's decoded IMPs independently.
-            assert [line.strip() for line in tool.splitlines()]==[str(path)+' [arm64_32]:','-objc:']
+            # The tool can render a null class placeholder without method data.
+            # Accept only the two observed shapes, then require independent labels and IMPs.
+            assert apple_arm64_32_empty_objc_output(tool,path)
             nm=subprocess.check_output(['/usr/bin/xcrun','nm','-arch',arch,'-n',str(path)],text=True)
             otool=subprocess.check_output(['/usr/bin/xcrun','otool','-arch',arch,'-ov',str(path)],text=True)
             expected={(int(address,16),prefix,owner,selector) for address,prefix,owner,selector in
