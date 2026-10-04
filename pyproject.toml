@@ -26,9 +26,9 @@ testpaths=["checks"]
 build_py="imagequay_delivery_build.DeliveryBuild"
 
 [tool.setuptools]
-license-files = ["EXTERNAL_LICENSES/CPYTHON_LICENSE", "EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE", "项目文档/LICENSE"]
+license-files = ["项目文档/EXTERNAL_LICENSES/CPYTHON_LICENSE", "项目文档/EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE", "项目文档/LICENSE"]
 py-modules=["imagequay_delivery_build"]
 
 [tool.setuptools.data-files]
 "share/imagequay"=["项目文档/README.md", "项目文档/ORIGIN.md", "项目文档/VALIDATION.md", "项目文档/DEFENSIVE_SCOPE.md", "项目文档/THIRD_PARTY_NOTICES.md"]
-"share/imagequay/licenses"=["项目文档/LICENSE", "EXTERNAL_LICENSES/CPYTHON_LICENSE", "EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE"]
+"share/imagequay/licenses"=["项目文档/LICENSE", "项目文档/EXTERNAL_LICENSES/CPYTHON_LICENSE", "项目文档/EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE"]

@@ -2,8 +2,8 @@ include 项目文档/LICENSE 项目文档/README.md 项目文档/ORIGIN.md 项�
 recursive-include src *.py *.json *.config *.codes
 recursive-include checks *.py
 recursive-include guides *
-recursive-include EXTERNAL_LICENSES *
-include requirements-test.lock DELIVERY_VALIDATION.json
+recursive-include 项目文档/EXTERNAL_LICENSES *
+include requirements-test.lock 项目文档/DELIVERY_VALIDATION.json
 recursive-include checks/bins *
 recursive-include .github *.yml
 include 项目文档/THIRD_PARTY_NOTICES.md

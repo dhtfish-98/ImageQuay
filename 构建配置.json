@@ -64,6 +64,21 @@
       "original": "guides/upstream_structs.rst",
       "stored": "项目文档/guides/upstream_structs.rst",
       "sha256": "41f1b39f537c6ce8666208541b202660e8d045f5f9e9754fb8025b24edcca3a7"
+    },
+    {
+      "original": "EXTERNAL_LICENSES/CPYTHON_LICENSE",
+      "stored": "项目文档/EXTERNAL_LICENSES/CPYTHON_LICENSE",
+      "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf"
+    },
+    {
+      "original": "EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE",
+      "stored": "项目文档/EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE",
+      "sha256": "322ebecb9ee1829627d0528b3177b5bb06654ce1e59ee0a9b133ab6056655e6f"
+    },
+    {
+      "original": "guides/upstream_requirements.txt",
+      "stored": "项目文档/guides/upstream_requirements.txt",
+      "sha256": "6b2a8a082dc7a0e63ed28b4ba8827aab62c8a6a0f6aaa6024ceb3fe87ca67220"
     }
   ],
   "platform_entries": []
