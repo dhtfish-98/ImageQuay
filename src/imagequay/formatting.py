@@ -39,7 +39,7 @@ except:
 try:
     quay_IMAGEQUAY_VERSION = quay_distribution_metadata.version('imagequay')
 except quay_distribution_metadata.PackageNotFoundError:
-    quay_IMAGEQUAY_VERSION = '1.0.5'
+    quay_IMAGEQUAY_VERSION = '1.0.7'
 quay_THREAD_COUNT = max(1, (quay_os.cpu_count() or 1) - 1)
 quay_OUT_IS_TTY = quay_sys.stdout.isatty()
 quay_MY_DIR = __file__

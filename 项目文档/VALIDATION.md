@@ -1,5 +1,16 @@
 # ImageQuay validation
 
+## 1.0.7 source-version fallback — 2026-10-05
+
+In v1.0.6, running from source without installed distribution metadata printed
+v1.0.5 even though the package declared v1.0.6. A regression test now forces
+that source-only path and compares the displayed version with `pyproject.toml`.
+The 1.0.7 source suite passes 387 tests on macOS/Python 3.12. The local Swift
+compiler test needed an ASCII temporary-path alias whose target remained under
+`Build`; invoking this host's `swiftc` with a Unicode `TMPDIR` produced SIGTRAP.
+Package construction, isolated installation, GitHub CI and release assets are
+checked separately for the exact published commit.
+
 ## 1.0.6 document-layout validation — 2026-10-05
 
 Eight historical upstream guide support files moved byte-for-byte from root `guides/` to `项目文档/guides/`. `FILE_MAP.json` now resolves to their tracked canonical locations. Runtime source and upstream license bytes are unchanged. Local Python 3.14.6 check: 386/386 project tests pass. Package and publication checks for this version are recorded separately from the 1.0.5 evidence below.
