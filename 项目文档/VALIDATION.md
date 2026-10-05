@@ -1,6 +1,6 @@
 # ImageQuay validation
 
-## 1.0.8 source-only fixture candidate — 2026-10-06
+## 1.0.8 source-only fixtures — 2026-10-06
 
 The four historical Mach-O parser inputs are generated only in ignored
 `Build/fixtures` from three source files at the pinned upstream MIT commit.
@@ -17,8 +17,8 @@ the 822-observation pinned-upstream comparison passed with no unexplained
 difference, and an isolated wheel passed the installed consumer and six CLI
 editing flows. The wheel contains no compiled fixtures; the sdist contains
 the three attributed input sources and no compiled fixtures. Exact GitHub
-main/tag CI, public release and asset re-download remain OPEN for this local
-candidate.
+main/tag CI, public release and asset re-download are recorded separately
+for the published commit.
 
 ## 1.0.7 source-version fallback — 2026-10-05
 
@@ -72,6 +72,8 @@ Format evidence: [Apple Mach-O definitions](https://github.com/apple-oss-distrib
 ## Reproduce
 
 ```sh
+python3 构建.py --stage --ci
+cd Build/源码
 python -m pip install -r requirements-test.lock
 python -m pip install -e .
 python checks/build_fixtures.py

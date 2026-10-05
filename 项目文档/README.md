@@ -13,6 +13,8 @@ The upstream terminal interface and device-specific firmware layouts require env
 ## Install
 
 ```sh
+python3 构建.py --stage --ci
+cd Build/源码
 python -m pip install .
 imagequay --help
 ```
@@ -20,11 +22,17 @@ imagequay --help
 ## Development
 
 ```sh
+python3 构建.py --stage --ci
+cd Build/源码
 python -m pip install '.[test]'
 python checks/build_fixtures.py
 python -m pytest
 python -m build
 ```
+
+Run the staging command from a fresh checkout, or use `python3 构建.py --build`
+from the repository root for a new package output. The staged
+checkout and all generated packages stay under ignored `Build`.
 
 New implementation names are listed in `SYMBOL_MAP.json`, and module/file mappings in `FILE_MAP.json`. External data labels and public compatibility aliases are kept at an explicit adapter boundary. The `guides` directory contains clearly attributed historical upstream documentation; its original commands refer to the upstream project.
 
