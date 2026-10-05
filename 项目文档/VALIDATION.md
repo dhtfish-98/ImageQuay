@@ -1,5 +1,9 @@
 # ImageQuay validation
 
+## 1.0.6 document-layout validation — 2026-10-05
+
+Eight historical upstream guide support files moved byte-for-byte from root `guides/` to `项目文档/guides/`. `FILE_MAP.json` now resolves to their tracked canonical locations. Runtime source and upstream license bytes are unchanged. Local Python 3.14.6 check: 386/386 project tests pass. Package and publication checks for this version are recorded separately from the 1.0.5 evidence below.
+
 ## 1.0.5 offline oracle validation — 2026-10-04
 
 On local macOS with Python 3.12, **386 tests passed**. The ARM64_32 reference-tool check now accepts only the exact two-line empty ObjC display or that display plus Apple's two-line null-class placeholder. A local injection of the GitHub runner's observed placeholder made the prior assertion fail and the revised assertion pass. Both paths retain the SHA-256-bound fixture, independent `nm` and `otool` agreement on five method addresses/selectors, equality with parsed methods, and unchanged input bytes. No parser implementation changed. GitHub Actions results must be checked against the final published commit separately.

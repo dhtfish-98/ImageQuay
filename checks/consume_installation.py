@@ -43,7 +43,7 @@ if consumer_project=='ImageQuay':
     from imagequay.failure_types import quay_MalformedMachOException
     from imagequay.file_ops import safe_open
     from types import SimpleNamespace
-    assert importlib.metadata.version('imagequay')=='1.0.5'
+    assert importlib.metadata.version('imagequay')=='1.0.6'
     header=consumer_struct.pack('<8I',0xfeedfacf,0x01000007,3,2,0,0,0,0)
     owner=quay_MachOFile(consumer_io.BytesIO(header+b'\x04\x00\xc0\x90\x01\x00'))
     view=owner.slices[0]
@@ -62,7 +62,7 @@ if consumer_project=='ImageQuay':
         try:safe_open(destination,'wb')
         except FileExistsError:pass
         else:raise AssertionError('installed output protection is absent')
-    print('ImageQuay 1.0.5 installed snapshot/export/private-output PASS')
+    print('ImageQuay 1.0.6 installed snapshot/export/private-output PASS')
 
     class InstalledSigned(quay_Struct):
         FIELDS={'signed':0x10004}
@@ -81,7 +81,7 @@ if consumer_project=='ImageQuay':
     from imagequay_layout.pointer_records import quay_dyld_chained_ptr_64_rebase
     consumer_bits=quay_Struct.create_with_bytes(quay_dyld_chained_ptr_64_rebase,(0x123456789).to_bytes(8,'little'))
     assert consumer_bits.target==0x123456789 and consumer_bits.raw==(0x123456789).to_bytes(8,'little')
-    print('ImageQuay 1.0.5 installed signed/nested/bitfield/plist policy PASS')
+    print('ImageQuay 1.0.6 installed signed/nested/bitfield/plist policy PASS')
 
 if consumer_project=='ImageQuay':
     from imagequay.objc_model import quay_TypeProcessor,quay_Property
@@ -104,4 +104,4 @@ if consumer_project=='ImageQuay':
         assert consumer_view.full_bytes_for_slice()==consumer_source
         consumer_count+=1
     assert consumer_count==3
-    print('ImageQuay 1.0.5 installed language grammar/Swift models/three immutable ObjC slices PASS')
+    print('ImageQuay 1.0.6 installed language grammar/Swift models/three immutable ObjC slices PASS')
