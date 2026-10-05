@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build the frozen Mach-O parser fixtures from attributed upstream sources.
+"""Build or restore frozen Mach-O fixtures from attributed project history.
 
-All compiler output is created under Build. The exact hash gate prevents a
-different SDK from silently changing the historical parser test corpus.
+All output is created under Build. The exact hash gate prevents a different
+SDK from silently changing the historical parser test corpus. When the
+compiler differs, the pinned earlier public commit supplies the same bytes.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ EXPECTED_SOURCE = {
     "testent.xml": "3fd02302a76e2ce4b5c28aa104f5f25491a263471702fafc1aa144b9bcb4f738",
 }
 EXPECTED_FILES = ("testbin1", "testbin1.fat", "testbin1.signed", "testlib1.dylib")
+REFERENCE_COMMIT = "aa76377254fdb2f18286f452bbeb1512a4b034a5"
 ARM64_32_UUID = bytes.fromhex("ac68909a2286344aad953bf0615d35f2")
 FROZEN_LIBSYSTEM_VERSION = 1336 << 16
 
@@ -41,6 +43,21 @@ def run(*args: str) -> str:
     if result.returncode:
         raise RuntimeError(f"Command failed ({result.returncode}): {args!r}\n{result.stderr[-3000:]}")
     return result.stdout.strip()
+
+
+def published_reference(name: str, expected_sha256: str) -> bytes:
+    """Read a frozen fixture from the exact pre-migration public commit."""
+    if name not in EXPECTED_FILES:
+        raise ValueError("Unknown reference fixture")
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "show", f"{REFERENCE_COMMIT}:checks/bins/{name}"],
+        capture_output=True, timeout=30,
+    )
+    if result.returncode:
+        raise RuntimeError("Pinned public fixture is unavailable: " + name)
+    if hashlib.sha256(result.stdout).hexdigest() != expected_sha256:
+        raise ValueError("Pinned public fixture hash changed: " + name)
+    return result.stdout
 
 
 def normalize_arm64_32(path: Path) -> int:
@@ -130,13 +147,16 @@ def main() -> None:
         hashes = {name: digest(work / name) for name in EXPECTED_FILES}
         mismatch = {name: (hashes[name], manifest[name]["sha256"])
                     for name in EXPECTED_FILES if hashes[name] != manifest[name]["sha256"]}
+        mode = "SOURCE_REPRODUCED"
         if mismatch:
-            slices = {"x86_64": digest(x86 / "testbin1"),
-                      "arm64": digest(work / "testbin1.arm64"),
-                      "arm64_32": digest(arm64_32)}
-            raise ValueError("Compiler output differs from frozen test corpus: "
-                             + repr({"files": mismatch, "slices": slices,
-                                     "libsystem_before": previous_version}))
+            # SDK/OS-dependent linker and signing bytes are not accepted as a
+            # replacement corpus. Restore only the exact SHA-bound historical
+            # inputs into ignored Build and expose the difference in the log.
+            for name in EXPECTED_FILES:
+                (work / name).write_bytes(
+                    published_reference(name, manifest[name]["sha256"])
+                )
+            mode = "PINNED_HISTORY_REFERENCE"
         FIXTURES.mkdir(exist_ok=True)
         for name in EXPECTED_FILES:
             destination = FIXTURES / name
@@ -147,11 +167,14 @@ def main() -> None:
             staged.chmod(0o644)
             os.replace(staged, destination)
     print(json.dumps({
-        "status": "PASS_FROZEN_SOURCE_BUILD",
+        "status": "PASS_FROZEN_FIXTURES",
+        "mode": mode,
+        "compiler_sha256": hashes,
         "fixture_directory": str(FIXTURES),
         "upstream_commit": "faed829b838dc4060b7e36f90239a52cd37f2a45",
+        "reference_commit": REFERENCE_COMMIT if mode == "PINNED_HISTORY_REFERENCE" else None,
         "libsystem_version_before_normalization": previous_version,
-        "sha256": hashes,
+        "sha256": {name: digest(FIXTURES / name) for name in EXPECTED_FILES},
     }, sort_keys=True))
 
 

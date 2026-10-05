@@ -4,10 +4,17 @@
 
 The 1.0.8 tag and main CI on macOS 15 failed before tests because its older
 Xcode produced different bytes for all four frozen fixtures. No 1.0.8 Release
-was published. This patch selects GitHub's `xcode-27` runner and checks the
-exact Xcode 27.0 build `27A266a`, matching the local toolchain used below.
-Fixture hashes still fail closed on any changed output. GitHub CI and Release
-evidence are checked against the final 1.0.9 commit separately.
+was published. The first 1.0.9 main CI on GitHub's `xcode-27` runner also
+produced different bytes despite the same Xcode 27.0 build `27A266a`; the
+runner OS and signing environment are not byte-reproducible with the local
+machine. The builder now compiles the attributed sources, then either uses an
+exact whole-file match or explicitly reads the four original fixtures from
+public commit `aa76377254fdb2f18286f452bbeb1512a4b034a5` in Git history.
+Each historical byte stream is checked against the previously published SHA
+before it is placed under ignored Build. A changed or missing reference fails
+the build. No compiled fixture is tracked in the current tree or packaged.
+GitHub CI and Release evidence are checked against the final 1.0.9 commit
+separately.
 
 ## 1.0.8 source-only fixtures — 2026-10-06
 
@@ -17,9 +24,9 @@ The thin executable needs linker header padding; the x86_64 library retains
 the historical `bins/testlib1.dylib` install name. The ARM64_32 slice is
 linked for watchOS 7 and has its UUID and libSystem load-command version
 normalized to the frozen test vector; every whole-file SHA-256 is then required
-to equal the already published reference hash. A toolchain that changes any
-other byte fails the build, so this check does not assert general Xcode
-reproducibility. Source tests and installed wheel consumers read the generated
+to equal the already published reference hash. In the original 1.0.8 tag, a
+toolchain that changed any other byte failed the build. Source tests and
+installed wheel consumers read the generated
 inputs under Build. Original MIT and other third-party rights remain intact.
 On local macOS/Python 3.12, source and unpacked sdist each passed 387 tests;
 the 822-observation pinned-upstream comparison passed with no unexplained

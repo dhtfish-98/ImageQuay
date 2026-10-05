@@ -11,4 +11,7 @@ builder compiles them under ignored `Build/fixtures` for parser verification,
 with linker header padding where required. These are data inputs to the tests;
 the tests do not execute them. The four compiled Mach-O fixtures from earlier
 releases are no longer tracked or included in source distributions. Their
-published SHA-256 values remain a strict build gate.
+published SHA-256 values remain a strict build gate. If a newer toolchain
+produces different bytes, the builder reads those exact hash-checked historical
+test inputs from fixed public commit `aa76377254fdb2f18286f452bbeb1512a4b034a5`
+into ignored Build and reports that fallback.
