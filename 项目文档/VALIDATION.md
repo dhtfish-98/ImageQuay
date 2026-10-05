@@ -1,5 +1,14 @@
 # ImageQuay validation
 
+## 1.0.9 CI toolchain pin — 2026-10-06
+
+The 1.0.8 tag and main CI on macOS 15 failed before tests because its older
+Xcode produced different bytes for all four frozen fixtures. No 1.0.8 Release
+was published. This patch selects GitHub's `xcode-27` runner and checks the
+exact Xcode 27.0 build `27A266a`, matching the local toolchain used below.
+Fixture hashes still fail closed on any changed output. GitHub CI and Release
+evidence are checked against the final 1.0.9 commit separately.
+
 ## 1.0.8 source-only fixtures — 2026-10-06
 
 The four historical Mach-O parser inputs are generated only in ignored
