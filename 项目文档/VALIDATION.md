@@ -1,5 +1,25 @@
 # ImageQuay validation
 
+## 1.0.8 source-only fixture candidate — 2026-10-06
+
+The four historical Mach-O parser inputs are generated only in ignored
+`Build/fixtures` from three source files at the pinned upstream MIT commit.
+The thin executable needs linker header padding; the x86_64 library retains
+the historical `bins/testlib1.dylib` install name. The ARM64_32 slice is
+linked for watchOS 7 and has its UUID and libSystem load-command version
+normalized to the frozen test vector; every whole-file SHA-256 is then required
+to equal the already published reference hash. A toolchain that changes any
+other byte fails the build, so this check does not assert general Xcode
+reproducibility. Source tests and installed wheel consumers read the generated
+inputs under Build. Original MIT and other third-party rights remain intact.
+On local macOS/Python 3.12, source and unpacked sdist each passed 387 tests;
+the 822-observation pinned-upstream comparison passed with no unexplained
+difference, and an isolated wheel passed the installed consumer and six CLI
+editing flows. The wheel contains no compiled fixtures; the sdist contains
+the three attributed input sources and no compiled fixtures. Exact GitHub
+main/tag CI, public release and asset re-download remain OPEN for this local
+candidate.
+
 ## 1.0.7 source-version fallback — 2026-10-05
 
 In v1.0.6, running from source without installed distribution metadata printed
@@ -54,6 +74,7 @@ Format evidence: [Apple Mach-O definitions](https://github.com/apple-oss-distrib
 ```sh
 python -m pip install -r requirements-test.lock
 python -m pip install -e .
+python checks/build_fixtures.py
 python -m pytest -q -p no:cacheprovider
 python checks/compare_upstream.py --upstream-root /path/to/pinned-upstream-checkout
 python -m build

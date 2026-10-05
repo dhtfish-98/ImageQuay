@@ -4,7 +4,6 @@ recursive-include checks *.py
 recursive-include guides *
 recursive-include 项目文档/EXTERNAL_LICENSES *
 include requirements-test.lock 项目文档/DELIVERY_VALIDATION.json
-recursive-include checks/bins *
 recursive-include .github *.yml
 include 项目文档/THIRD_PARTY_NOTICES.md
 include .gitignore
@@ -13,7 +12,7 @@ include .gitignore
 
 include 项目文档/DEFENSIVE_SCOPE.md
 recursive-include checks *.json
-recursive-include checks/sources *.m *.swift
+recursive-include checks/sources *.m *.swift *.xml
 
 # Directory layout: canonical docs and source build entry; generated trees are not sdist inputs.
 graft 项目文档
@@ -25,6 +24,7 @@ prune Build/环境
 prune Build/缓存
 prune Build/中间
 prune Build/临时
+prune Build/fixtures
 global-exclude __pycache__ *.py[cod] .DS_Store
 
 # Original logical paths exist only in the staged compatibility view.

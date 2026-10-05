@@ -23,6 +23,7 @@ from imagequay.formatting import *
 from imagequay.parsed_image import *
 from imagequay_support.diagnostics import quay_log as quay_log, quay_LogLevel as quay_LogLevel
 quay_scriptdir = _name_boundary.attributes(quay_os)['path'].dirname(_name_boundary.attributes(quay_os)['path'].realpath(__file__))
+quay_fixture_dir = _name_boundary.attributes(quay_os)['path'].join(quay_scriptdir, '..', 'Build', 'fixtures')
 _name_boundary.attributes(_name_boundary.attributes(quay_sys)['path'])['insert'](0, _name_boundary.attributes(quay_os)['path'].abspath(f'{quay_scriptdir}/../src'))
 _name_boundary.attributes(quay_log)['LOG_LEVEL'] = quay_LogLevel.WARN
 quay_error_buffer = ''
@@ -156,7 +157,7 @@ class quay_BackingFileTestCase(quay_unittest.TestCase):
 
     @_name_boundary.callable_contract({'self': 'quay_self_e645777'}, 'test_with_mmaped_and_actual_file_pointer')
     def quay_test_with_mmaped_and_actual_file_pointer(quay_self_e645777):
-        quay_fp_b23f7a7 = open(quay_scriptdir + '/bins/testbin1', 'rb')
+        quay_fp_b23f7a7 = open(quay_fixture_dir + '/testbin1', 'rb')
         quay_bf_cc927d8 = quay_BackingFile(quay_fp_b23f7a7, use_mmaped_io=True)
         quay_self_e645777.assertNotEqual(_name_boundary.attributes(quay_bf_cc927d8)['size'], 0)
         _name_boundary.attributes(quay_bf_cc927d8)['write'](0, b'\xde\xad\xbe\xef')
@@ -169,8 +170,8 @@ class quay_SliceTestCase(quay_unittest.TestCase):
     @_name_boundary.callable_contract({'self': 'quay_self_db281c8', 'args': 'quay_args_95870ef', 'kwargs': 'quay_kwargs_6e40578'}, '__init__')
     def __init__(quay_self_db281c8, *quay_args_95870ef, **quay_kwargs_6e40578):
         super().__init__(*quay_args_95870ef, **quay_kwargs_6e40578)
-        _name_boundary.attributes(quay_self_db281c8)['thin'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1', 'rb'))
-        _name_boundary.attributes(quay_self_db281c8)['fat'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1.fat', 'rb'))
+        _name_boundary.attributes(quay_self_db281c8)['thin'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1', 'rb'))
+        _name_boundary.attributes(quay_self_db281c8)['fat'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1.fat', 'rb'))
 
     @_name_boundary.callable_contract({'self': 'quay_self_a48d06d'}, 'test_patch')
     def quay_test_patch(quay_self_a48d06d):
@@ -286,8 +287,8 @@ class quay_ImageHeaderTestCase(quay_unittest.TestCase):
     @_name_boundary.callable_contract({'self': 'quay_self_749eb47', 'args': 'quay_args_ae9aa3b', 'kwargs': 'quay_kwargs_9d2688a'}, '__init__')
     def __init__(quay_self_749eb47, *quay_args_ae9aa3b, **quay_kwargs_9d2688a):
         super().__init__(*quay_args_ae9aa3b, **quay_kwargs_9d2688a)
-        _name_boundary.attributes(quay_self_749eb47)['thin'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1', 'rb'))
-        _name_boundary.attributes(quay_self_749eb47)['thin_lib'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testlib1.dylib', 'rb'))
+        _name_boundary.attributes(quay_self_749eb47)['thin'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1', 'rb'))
+        _name_boundary.attributes(quay_self_749eb47)['thin_lib'] = quay_ScratchFile(open(quay_fixture_dir + '/testlib1.dylib', 'rb'))
 
     @_name_boundary.callable_contract({'self': 'quay_self_8e21cd9'}, 'test_constructable')
     def quay_test_constructable(quay_self_8e21cd9):
@@ -415,8 +416,8 @@ class quay_MachOLoaderTestCase(quay_unittest.TestCase):
     @_name_boundary.callable_contract({'self': 'quay_self_fa7278b', 'args': 'quay_args_1556a05', 'kwargs': 'quay_kwargs_1e5f523'}, '__init__')
     def __init__(quay_self_fa7278b, *quay_args_1556a05, **quay_kwargs_1e5f523):
         super().__init__(*quay_args_1556a05, **quay_kwargs_1e5f523)
-        _name_boundary.attributes(quay_self_fa7278b)['thin'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1', 'rb'))
-        _name_boundary.attributes(quay_self_fa7278b)['fat'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1.fat', 'rb'))
+        _name_boundary.attributes(quay_self_fa7278b)['thin'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1', 'rb'))
+        _name_boundary.attributes(quay_self_fa7278b)['fat'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1.fat', 'rb'))
 
     @_name_boundary.callable_contract({'self': 'quay_self_5d44968'}, 'test_thin_type')
     def quay_test_thin_type(quay_self_5d44968):
@@ -468,7 +469,7 @@ class quay_SegmentLCTestCase(quay_unittest.TestCase):
     @_name_boundary.callable_contract({'self': 'quay_self_3b60b93', 'args': 'quay_args_62434d5', 'kwargs': 'quay_kwargs_1379227'}, '__init__')
     def __init__(quay_self_3b60b93, *quay_args_62434d5, **quay_kwargs_1379227):
         super().__init__(*quay_args_62434d5, **quay_kwargs_1379227)
-        _name_boundary.attributes(quay_self_3b60b93)['thin'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1', 'rb'))
+        _name_boundary.attributes(quay_self_3b60b93)['thin'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1', 'rb'))
 
     @_name_boundary.callable_contract({'self': 'quay_self_91d3e2d'}, 'test_constructable')
     def quay_test_constructable(quay_self_91d3e2d):
@@ -566,7 +567,7 @@ class quay_ImageTestCase(quay_unittest.TestCase):
     @_name_boundary.callable_contract({'self': 'quay_self_ee03bf8', 'args': 'quay_args_331fa2b', 'kwargs': 'quay_kwargs_9a0472c'}, '__init__')
     def __init__(quay_self_ee03bf8, *quay_args_331fa2b, **quay_kwargs_9a0472c):
         super().__init__(*quay_args_331fa2b, **quay_kwargs_9a0472c)
-        _name_boundary.attributes(quay_self_ee03bf8)['thin'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1', 'rb'))
+        _name_boundary.attributes(quay_self_ee03bf8)['thin'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1', 'rb'))
 
     @_name_boundary.callable_contract({'self': 'quay_self_b78b4af'}, 'test_serialization')
     def quay_test_serialization(quay_self_b78b4af):
@@ -647,7 +648,7 @@ class quay_CodesignTestClass(quay_unittest.TestCase):
     @_name_boundary.callable_contract({'self': 'quay_self_d72d757', 'args': 'quay_args_0b7d697', 'kwargs': 'quay_kwargs_ac849fe'}, '__init__')
     def __init__(quay_self_d72d757, *quay_args_0b7d697, **quay_kwargs_ac849fe):
         super().__init__(*quay_args_0b7d697, **quay_kwargs_ac849fe)
-        _name_boundary.attributes(quay_self_d72d757)['signed'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1.signed', 'rb'))
+        _name_boundary.attributes(quay_self_d72d757)['signed'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1.signed', 'rb'))
 
     @_name_boundary.callable_contract({'self': 'quay_self_50ddd7d'}, 'test_codesigning')
     def quay_test_codesigning(quay_self_50ddd7d):
@@ -664,8 +665,8 @@ class quay_DyldTestCase(quay_unittest.TestCase):
     @_name_boundary.callable_contract({'self': 'quay_self_8f8f4db', 'args': 'quay_args_4813e9e', 'kwargs': 'quay_kwargs_15a47a1'}, '__init__')
     def __init__(quay_self_8f8f4db, *quay_args_4813e9e, **quay_kwargs_15a47a1):
         super().__init__(*quay_args_4813e9e, **quay_kwargs_15a47a1)
-        _name_boundary.attributes(quay_self_8f8f4db)['thin'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testbin1', 'rb'))
-        _name_boundary.attributes(quay_self_8f8f4db)['thin_lib'] = quay_ScratchFile(open(quay_scriptdir + '/bins/testlib1.dylib', 'rb'))
+        _name_boundary.attributes(quay_self_8f8f4db)['thin'] = quay_ScratchFile(open(quay_fixture_dir + '/testbin1', 'rb'))
+        _name_boundary.attributes(quay_self_8f8f4db)['thin_lib'] = quay_ScratchFile(open(quay_fixture_dir + '/testlib1.dylib', 'rb'))
 
     @_name_boundary.callable_contract({'self': 'quay_self_111cafe'}, 'test_install_name')
     def quay_test_install_name(quay_self_111cafe):

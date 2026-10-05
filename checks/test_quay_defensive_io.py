@@ -215,7 +215,7 @@ def test_huge_virtual_map_does_not_allocate_page_per_address():
 
 
 def test_record_cache_keeps_type_byteorder_and_generation():
-    with (ROOT/'bins/testbin1').open('rb') as stream:image=imagequay.load_image(stream)
+    with (ROOT.parent/'Build/fixtures/testbin1').open('rb') as stream:image=imagequay.load_image(stream)
     a=image.read_struct(0,Header32)
     b=image.read_struct(0,Header64)
     assert type(a) is not type(b)
@@ -306,7 +306,7 @@ def test_default_cli_never_calls_update_network(monkeypatch):
 @pytest.mark.parametrize('name',['testbin1','testbin1.fat','testbin1.signed','testlib1.dylib'])
 def test_current_export_addresses_match_apple_nm(name):
     expected=json.loads((ROOT/'export_nm_expected.json').read_text())[name]
-    path=ROOT/'bins'/name
+    path=ROOT.parent/'Build'/'fixtures'/name
     assert hashlib.sha256(path.read_bytes()).hexdigest()==expected['sha256']
     with path.open('rb') as stream:image=imagequay.load_image(stream)
     architecture=image.slice.type.name.lower()
@@ -320,7 +320,7 @@ def test_current_export_addresses_match_apple_nm(name):
 
 def test_header_growth_is_confined_to_declared_padding():
     from imagequay.toolkit_api import patch_image_header
-    with (ROOT/'bins/testbin1').open('rb') as stream:image=imagequay.load_image(stream)
+    with (ROOT.parent/'Build/fixtures/testbin1').open('rb') as stream:image=imagequay.load_image(stream)
     rpath=Struct.create_with_values(Rpath,[0x8000001c,0,12])
     before=image.slice.full_bytes_for_slice()
     changed=image.macho_header.insert_load_command(rpath,suffix='@loader_path/owned')

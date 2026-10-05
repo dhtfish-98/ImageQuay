@@ -267,7 +267,7 @@ def test_independent_printed_binding_oracle_does_not_ignore_unknown_operands():
 @pytest.mark.skipif(sys.platform != 'darwin', reason='Apple dyld_info supplies an independent Mach-O oracle')
 @pytest.mark.parametrize('filename', ['testbin1', 'testbin1.fat', 'testbin1.signed', 'testlib1.dylib'])
 def test_all_fixture_chained_bind_and_rebase_locations_match_apple_dyld_info(filename):
-    path = ROOT/'bins'/filename
+    path = ROOT.parent/'Build'/'fixtures'/filename
     expected = json.loads((ROOT/'export_nm_expected.json').read_text())[filename]
     assert hashlib.sha256(path.read_bytes()).hexdigest() == expected['sha256']
     with path.open('rb') as stream:

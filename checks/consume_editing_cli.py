@@ -4,11 +4,11 @@ import tempfile,subprocess,json,hashlib,os,sys
 import imagequay
 root=Path(__file__).resolve().parents[1];work=Path(tempfile.mkdtemp(prefix='imagequay-installed-cli-'));executable=str(Path(sys.executable).parent/'imagequay')
 assert 'site-packages' in Path(imagequay.__file__).parts
-with (root/'checks/bins/testbin1.fat').open('rb') as stream:owner=imagequay.load_macho_file(stream)
+with (root/'Build/fixtures/testbin1.fat').open('rb') as stream:owner=imagequay.load_macho_file(stream)
 inputs=[]
 for view in owner.slices[:2]:
  path=work/view.type.name.lower();path.write_bytes(view.full_bytes_for_slice());inputs.append(path)
-source=work/'owned.dylib';source.write_bytes((root/'checks/bins/testlib1.dylib').read_bytes());sourcehash=hashlib.sha256(source.read_bytes()).hexdigest()
+source=work/'owned.dylib';source.write_bytes((root/'Build/fixtures/testlib1.dylib').read_bytes());sourcehash=hashlib.sha256(source.read_bytes()).hexdigest()
 def run(args,expected=0):
  result=subprocess.run([executable,'-v','-1',*map(str,args)],cwd=work,capture_output=True,text=True,timeout=15)
  assert result.returncode==expected,(args,result.returncode,result.stdout,result.stderr)

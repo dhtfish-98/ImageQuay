@@ -4,4 +4,11 @@
 
 The retained chained-fixup layouts include upstream MachOView-derived portions. Their Apache license is preserved in `EXTERNAL_LICENSES/MACHOVIEW_CHAINEDFIXUP_APACHE_LICENSE`. The project-wide upstream MIT copyright remains in LICENSE and the original source header notices are retained.
 
-The Mach-O fixture bytes in checks/bins were compiled locally from upstream MIT test sources for deterministic parser verification, with modern linker header padding where required. They are data fixtures, not executables invoked by the tests.
+The attributed upstream MIT Objective-C fixture sources and entitlements are
+retained under `checks/sources/ktool/` from pinned ktool commit
+`faed829b838dc4060b7e36f90239a52cd37f2a45`. On macOS, the local fixture
+builder compiles them under ignored `Build/fixtures` for parser verification,
+with linker header padding where required. These are data inputs to the tests;
+the tests do not execute them. The four compiled Mach-O fixtures from earlier
+releases are no longer tracked or included in source distributions. Their
+published SHA-256 values remain a strict build gate.

@@ -14,7 +14,7 @@ audit_observer=audit_root/'checks/differential_observer.py'
 audit_observations=[]
 for audit_variant,audit_location in [('original',audit_options.upstream_root.resolve()),('derivative',audit_root)]:
     audit_command=[audit_sys.executable,str(audit_observer),audit_project,audit_variant,str(audit_location)]
-    if audit_project=='ImageQuay':audit_command.extend(['--fixtures',str(audit_root/'checks/bins')])
+    if audit_project=='ImageQuay':audit_command.extend(['--fixtures',str(audit_root/'Build/fixtures')])
     audit_result=audit_subprocess.run(audit_command,text=True,capture_output=True,check=True)
     audit_observations.append(audit_json.loads(audit_result.stdout))
 audit_old,audit_new=audit_observations

@@ -214,7 +214,7 @@ def test_arm64_32_apple_empty_objc_output_shapes_are_exact():
 @pytest.mark.skipif(sys.platform!='darwin',reason='Apple dyld_info supplies a static metadata oracle')
 @pytest.mark.parametrize('filename',['testbin1','testbin1.signed','testlib1.dylib','testbin1.fat'])
 def test_all_six_legacy_slices_objc_methods_match_apple_tool_and_preserve_inputs(filename):
-    path=ROOT/'bins'/filename;before=hashlib.sha256(path.read_bytes()).hexdigest()
+    path=ROOT.parent/'Build'/'fixtures'/filename;before=hashlib.sha256(path.read_bytes()).hexdigest()
     with path.open('rb') as stream:owner=quay_MachOFile(stream)
     total=0
     for view in owner.slices:
